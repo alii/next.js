@@ -2,9 +2,9 @@ import type { OutgoingHttpHeaders } from 'http'
 import type { DomainLocale, I18NConfig } from '../config-shared'
 import type { I18NProvider } from '../lib/i18n-provider'
 
+import { getHostname } from '../../shared/lib/get-hostname'
 import { detectDomainLocale } from '../../shared/lib/i18n/detect-domain-locale'
 import { formatNextPathnameInfo } from '../../shared/lib/router/utils/format-next-pathname-info'
-import { getHostname } from '../../shared/lib/get-hostname'
 import { getNextPathnameInfo } from '../../shared/lib/router/utils/get-next-pathname-info'
 
 interface Options {
@@ -58,10 +58,10 @@ export class NextURL {
       (typeof baseOrOpts === 'object' && 'pathname' in baseOrOpts) ||
       typeof baseOrOpts === 'string'
     ) {
-      base = baseOrOpts
+      base = baseOrOpts as string | URL
       options = opts || {}
     } else {
-      options = opts || baseOrOpts || {}
+      options = (opts as Options) || baseOrOpts || {}
     }
 
     this[Internal] = {

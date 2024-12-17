@@ -1,19 +1,19 @@
-import os from 'os'
 import type { webpack } from 'next/dist/compiled/webpack/webpack'
+import os from 'os'
+import type { SubresourceIntegrityAlgorithm } from '../build/webpack/plugins/subresource-integrity-plugin'
+import type { SupportedTestRunners } from '../cli/next-test'
+import { INFINITE_CACHE } from '../lib/constants'
 import type { Header, Redirect, Rewrite } from '../lib/load-custom-routes'
-import { imageConfigDefault } from '../shared/lib/image-config'
 import type {
   ImageConfig,
   ImageConfigComplete,
 } from '../shared/lib/image-config'
-import type { SubresourceIntegrityAlgorithm } from '../build/webpack/plugins/subresource-integrity-plugin'
+import { imageConfigDefault } from '../shared/lib/image-config'
 import type { WEB_VITALS } from '../shared/lib/utils'
-import type { NextParsedUrlQuery } from './request-meta'
 import type { SizeLimit } from '../types'
-import type { ExpireTime } from './lib/revalidate'
-import type { SupportedTestRunners } from '../cli/next-test'
 import type { ExperimentalPPRConfig } from './lib/experimental/ppr'
-import { INFINITE_CACHE } from '../lib/constants'
+import type { ExpireTime } from './lib/revalidate'
+import type { NextParsedUrlQuery } from './request-meta'
 
 export type NextConfigComplete = Required<NextConfig> & {
   images: Required<ImageConfigComplete>
@@ -921,7 +921,7 @@ export interface NextConfig extends Record<string, any> {
    * @see [Output File Tracing](https://nextjs.org/docs/advanced-features/output-file-tracing)
    * @see [Static HTML Export](https://nextjs.org/docs/advanced-features/static-html-export)
    */
-  output?: 'standalone' | 'export'
+  output?: 'standalone' | 'export' | 'bun'
 
   /**
    * Automatically transpile and bundle dependencies from local packages (like monorepos) or from external dependencies (`node_modules`). This replaces the

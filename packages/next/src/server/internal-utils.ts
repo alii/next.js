@@ -1,6 +1,7 @@
 import type { NextParsedUrlQuery } from './request-meta'
 
 import { NEXT_RSC_UNION_QUERY } from '../client/components/app-router-headers'
+import type { NextURL } from './web/next-url'
 
 const INTERNAL_QUERY_NAMES = [
   '__nextFallback',
@@ -19,7 +20,7 @@ export function stripInternalQueries(query: NextParsedUrlQuery) {
   }
 }
 
-export function stripInternalSearchParams<T extends string | URL>(
+export function stripInternalSearchParams<T extends string | URL | NextURL>(
   url: T,
   isEdge: boolean
 ): T {

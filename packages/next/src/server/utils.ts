@@ -21,7 +21,7 @@ export function debounce<T, F extends AnyFunc<T>>(
   ms: number,
   maxWait = Infinity
 ) {
-  let timeoutId: undefined | NodeJS.Timeout
+  let timeoutId: undefined | ReturnType<typeof setTimeout>
 
   // The time the debouncing function was first called during this debounce queue.
   let startTime = 0

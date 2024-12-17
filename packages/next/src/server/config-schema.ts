@@ -1,9 +1,16 @@
-import type { NextConfig } from './config'
 import { VALID_LOADERS } from '../shared/lib/image-config'
+import type { NextConfig } from './config'
 
-import { z } from 'next/dist/compiled/zod'
 import type zod from 'next/dist/compiled/zod'
+import { z } from 'next/dist/compiled/zod'
 
+import { SUPPORTED_TEST_RUNNERS_LIST } from '../cli/next-test'
+import type {
+  Header,
+  Redirect,
+  Rewrite,
+  RouteHas,
+} from '../lib/load-custom-routes'
 import type { SizeLimit } from '../types'
 import type {
   ExportPathMap,
@@ -12,13 +19,6 @@ import type {
   TurboRuleConfigItemOptions,
   TurboRuleConfigItemOrShortcut,
 } from './config-shared'
-import type {
-  Header,
-  Rewrite,
-  RouteHas,
-  Redirect,
-} from '../lib/load-custom-routes'
-import { SUPPORTED_TEST_RUNNERS_LIST } from '../cli/next-test'
 
 // A custom zod schema for the SizeLimit type
 const zSizeLimit = z.custom<SizeLimit>((val) => {
@@ -571,7 +571,7 @@ export const configSchema: zod.ZodType<NextConfig> = z.lazy(() =>
         pagesBufferLength: z.number().optional(),
       })
       .optional(),
-    output: z.enum(['standalone', 'export']).optional(),
+    output: z.enum(['standalone', 'export', 'bun']).optional(),
     outputFileTracingRoot: z.string().optional(),
     outputFileTracingExcludes: z
       .record(z.string(), z.array(z.string()))

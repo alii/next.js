@@ -3,6 +3,7 @@ import {
   NEXT_INTERCEPTION_MARKER_PREFIX,
   NEXT_QUERY_PARAM_PREFIX,
 } from '../../lib/constants'
+import type { NextURL } from './next-url'
 
 /**
  * Converts a Node.js IncomingHttpHeaders object to a Headers object. Any
@@ -138,7 +139,7 @@ export function toNodeOutgoingHttpHeaders(
 /**
  * Validate the correctness of a user-provided URL.
  */
-export function validateURL(url: string | URL): string {
+export function validateURL(url: string | URL | NextURL): string {
   try {
     return String(new URL(String(url)))
   } catch (error: any) {

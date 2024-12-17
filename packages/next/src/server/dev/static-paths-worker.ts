@@ -1,24 +1,24 @@
 import type { NextConfigComplete } from '../config-shared'
 
-import '../require-hook'
 import '../node-environment'
+import '../require-hook'
 
+import { collectSegments } from '../../build/segment-config/app/app-segments'
+import type { PartialStaticPathsResult } from '../../build/utils'
 import {
   buildAppStaticPaths,
   buildStaticPaths,
   reduceAppConfig,
 } from '../../build/utils'
-import { collectSegments } from '../../build/segment-config/app/app-segments'
-import type { PartialStaticPathsResult } from '../../build/utils'
-import { loadComponents } from '../load-components'
-import { setHttpClientAndAgentOptions } from '../setup-http-agent-env'
-import type { IncrementalCache } from '../lib/incremental-cache'
-import { isAppPageRouteModule } from '../route-modules/checks'
+import { InvariantError } from '../../shared/lib/invariant-error'
 import {
   checkIsRoutePPREnabled,
   type ExperimentalPPRConfig,
 } from '../lib/experimental/ppr'
-import { InvariantError } from '../../shared/lib/invariant-error'
+import type { IncrementalCache } from '../lib/incremental-cache'
+import { loadComponents } from '../load-components'
+import { isAppPageRouteModule } from '../route-modules/checks'
+import { setHttpClientAndAgentOptions } from '../setup-http-agent-env'
 
 type RuntimeConfig = {
   pprConfig: ExperimentalPPRConfig | undefined
@@ -68,7 +68,7 @@ export async function loadStaticPaths({
   cacheLifeProfiles?: {
     [profile: string]: import('../../server/use-cache/cache-life').CacheLife
   }
-  nextConfigOutput: 'standalone' | 'export' | undefined
+  nextConfigOutput: 'standalone' | 'export' | 'bun' | undefined
   buildId: string
   authInterrupts: boolean
 }): Promise<PartialStaticPathsResult> {

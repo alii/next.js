@@ -1,27 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import type { ParsedUrlQuery } from 'querystring'
-import type { NextRouter } from '../shared/lib/router/router'
+import type { ClientReferenceManifest } from '../build/webpack/plugins/flight-manifest-plugin'
+import type { NextFontManifest } from '../build/webpack/plugins/next-font-manifest-plugin'
+import type { UnwrapPromise } from '../lib/coalesced-function'
+import type { Redirect } from '../lib/load-custom-routes'
+import type { COMPILER_NAMES } from '../shared/lib/constants'
 import type { HtmlProps } from '../shared/lib/html-context.shared-runtime'
-import type { DomainLocale } from './config'
+import type { ImageConfigComplete } from '../shared/lib/image-config'
+import type { NextRouter } from '../shared/lib/router/router'
 import type {
   AppType,
-  DocumentInitialProps,
-  DocumentType,
-  DocumentProps,
+  ComponentsEnhancer,
   DocumentContext,
+  DocumentInitialProps,
+  DocumentProps,
+  DocumentType,
   NextComponentType,
   RenderPage,
   RenderPageResult,
 } from '../shared/lib/utils'
-import type { ImageConfigComplete } from '../shared/lib/image-config'
-import type { Redirect } from '../lib/load-custom-routes'
-import {
-  type NextApiRequestCookies,
-  type __ApiPreviewProps,
-  setLazyProp,
-} from './api-utils'
-import { getCookieParser } from './api-utils/get-cookie-parser'
-import type { LoadComponentsReturnType } from './load-components'
 import type {
   GetServerSideProps,
   GetStaticProps,
@@ -29,80 +26,83 @@ import type {
   ServerRuntime,
   SizeLimit,
 } from '../types'
-import type { UnwrapPromise } from '../lib/coalesced-function'
-import type { ReactReadableStream } from './stream-utils/node-web-streams-helper'
-import type { ClientReferenceManifest } from '../build/webpack/plugins/flight-manifest-plugin'
-import type { NextFontManifest } from '../build/webpack/plugins/next-font-manifest-plugin'
-import type { PagesModule } from './route-modules/pages/module'
-import type { ComponentsEnhancer } from '../shared/lib/utils'
+import {
+  type NextApiRequestCookies,
+  type __ApiPreviewProps,
+  setLazyProp,
+} from './api-utils'
+import { getCookieParser } from './api-utils/get-cookie-parser'
+import type { DomainLocale } from './config'
+import type { ExpireTime, Revalidate } from './lib/revalidate'
+import type { LoadComponentsReturnType } from './load-components'
 import type { NextParsedUrlQuery } from './request-meta'
-import type { Revalidate, ExpireTime } from './lib/revalidate'
-import type { COMPILER_NAMES } from '../shared/lib/constants'
+import type { PagesModule } from './route-modules/pages/module'
+import type { ReactReadableStream } from './stream-utils/node-web-streams-helper'
 
-import React, { type JSX } from 'react'
+import stripAnsi from 'next/dist/compiled/strip-ansi'
 import ReactDOMServerPages from 'next/dist/server/ReactDOMServerPages'
+import React, { type JSX } from 'react'
 import { StyleRegistry, createStyleRegistry } from 'styled-jsx'
 import {
   GSP_NO_RETURNED_VALUE,
   GSSP_COMPONENT_MEMBER_ERROR,
   GSSP_NO_RETURNED_VALUE,
-  STATIC_STATUS_PAGE_GET_INITIAL_PROPS_ERROR,
   SERVER_PROPS_GET_INIT_PROPS_CONFLICT,
   SERVER_PROPS_SSG_CONFLICT,
   SSG_GET_INITIAL_PROPS_CONFLICT,
+  STATIC_STATUS_PAGE_GET_INITIAL_PROPS_ERROR,
   UNSTABLE_REVALIDATE_RENAME_ERROR,
 } from '../lib/constants'
+import isError from '../lib/is-error'
+import { isSerializableProps } from '../lib/is-serializable-props'
+import { allowedStatusCodes, getRedirectStatus } from '../lib/redirect-status'
+import { AmpStateContext } from '../shared/lib/amp-context.shared-runtime'
+import { isInAmpMode } from '../shared/lib/amp-mode'
+import { AppRouterContext } from '../shared/lib/app-router-context.shared-runtime'
 import {
   NEXT_BUILTIN_DOCUMENT,
   SERVER_PROPS_ID,
   STATIC_PROPS_ID,
   STATIC_STATUS_PAGES,
 } from '../shared/lib/constants'
-import { isSerializableProps } from '../lib/is-serializable-props'
-import { isInAmpMode } from '../shared/lib/amp-mode'
-import { AmpStateContext } from '../shared/lib/amp-context.shared-runtime'
+import type { DeepReadonly } from '../shared/lib/deep-readonly'
+import { getErrorSource } from '../shared/lib/error-source'
 import { defaultHead } from '../shared/lib/head'
 import { HeadManagerContext } from '../shared/lib/head-manager-context.shared-runtime'
-import Loadable from '../shared/lib/loadable.shared-runtime'
+import {
+  PathParamsContext,
+  SearchParamsContext,
+} from '../shared/lib/hooks-client-context.shared-runtime'
+import { HtmlContext } from '../shared/lib/html-context.shared-runtime'
+import { ImageConfigContext } from '../shared/lib/image-config-context.shared-runtime'
 import { LoadableContext } from '../shared/lib/loadable-context.shared-runtime'
+import Loadable from '../shared/lib/loadable.shared-runtime'
+import { denormalizePagePath } from '../shared/lib/page-path/denormalize-page-path'
+import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
 import { RouterContext } from '../shared/lib/router-context.shared-runtime'
+import {
+  PathnameContextProviderAdapter,
+  adaptForAppRouterInstance,
+  adaptForPathParams,
+  adaptForSearchParams,
+} from '../shared/lib/router/adapters'
 import { isDynamicRoute } from '../shared/lib/router/utils/is-dynamic'
 import {
   getDisplayName,
   isResSent,
   loadGetInitialProps,
 } from '../shared/lib/utils'
-import { HtmlContext } from '../shared/lib/html-context.shared-runtime'
-import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
-import { denormalizePagePath } from '../shared/lib/page-path/denormalize-page-path'
-import { getRequestMeta } from './request-meta'
-import { allowedStatusCodes, getRedirectStatus } from '../lib/redirect-status'
-import RenderResult, { type PagesRenderResultMetadata } from './render-result'
-import isError from '../lib/is-error'
-import {
-  streamToString,
-  renderToInitialFizzStream,
-} from './stream-utils/node-web-streams-helper'
-import { ImageConfigContext } from '../shared/lib/image-config-context.shared-runtime'
-import stripAnsi from 'next/dist/compiled/strip-ansi'
 import { stripInternalQueries } from './internal-utils'
-import {
-  adaptForAppRouterInstance,
-  adaptForPathParams,
-  adaptForSearchParams,
-  PathnameContextProviderAdapter,
-} from '../shared/lib/router/adapters'
-import { AppRouterContext } from '../shared/lib/app-router-context.shared-runtime'
-import {
-  SearchParamsContext,
-  PathParamsContext,
-} from '../shared/lib/hooks-client-context.shared-runtime'
-import { getTracer } from './lib/trace/tracer'
-import { RenderSpan } from './lib/trace/constants'
-import { ReflectAdapter } from './web/spec-extension/adapters/reflect'
 import { formatRevalidate } from './lib/revalidate'
-import { getErrorSource } from '../shared/lib/error-source'
-import type { DeepReadonly } from '../shared/lib/deep-readonly'
+import { RenderSpan } from './lib/trace/constants'
+import { getTracer } from './lib/trace/tracer'
+import RenderResult, { type PagesRenderResultMetadata } from './render-result'
+import { getRequestMeta } from './request-meta'
+import {
+  renderToInitialFizzStream,
+  streamToString,
+} from './stream-utils/node-web-streams-helper'
+import { ReflectAdapter } from './web/spec-extension/adapters/reflect'
 
 let tryGetPreviewData: typeof import('./api-utils/node/try-get-preview-data').tryGetPreviewData
 let warn: typeof import('../build/output/log').warn
@@ -252,7 +252,7 @@ export type RenderOptsPartial = {
   unstable_runtimeJS?: false
   unstable_JsPreload?: false
   optimizeCss: any
-  nextConfigOutput?: 'standalone' | 'export'
+  nextConfigOutput?: 'standalone' | 'export' | 'bun'
   nextScriptWorkers: any
   assetQueryString?: string
   resolvedUrl?: string

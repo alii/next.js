@@ -1,45 +1,39 @@
-import type { AppBuildManifest } from './webpack/plugins/app-build-manifest-plugin'
-import type { PagesManifest } from './webpack/plugins/pages-manifest-plugin'
 import type { ExportPathMap, NextConfigComplete } from '../server/config-shared'
-import type { MiddlewareManifest } from './webpack/plugins/middleware-plugin'
-import type { ActionManifest } from './webpack/plugins/flight-client-entry-plugin'
 import type { Revalidate } from '../server/lib/revalidate'
+import type { AppBuildManifest } from './webpack/plugins/app-build-manifest-plugin'
+import type { ActionManifest } from './webpack/plugins/flight-client-entry-plugin'
+import type { MiddlewareManifest } from './webpack/plugins/middleware-plugin'
+import type { PagesManifest } from './webpack/plugins/pages-manifest-plugin'
 
 import '../lib/setup-exception-listeners'
 
 import { loadEnvConfig, type LoadedEnvFiles } from '@next/env'
-import { bold, yellow } from '../lib/picocolors'
 import crypto from 'crypto'
-import { makeRe } from 'next/dist/compiled/picomatch'
 import { existsSync, promises as fs } from 'fs'
-import os from 'os'
-import { Worker } from '../lib/worker'
-import { defaultConfig } from '../server/config-shared'
+import { Sema } from 'next/dist/compiled/async-sema'
 import devalue from 'next/dist/compiled/devalue'
 import findUp from 'next/dist/compiled/find-up'
 import { nanoid } from 'next/dist/compiled/nanoid/index.cjs'
-import { Sema } from 'next/dist/compiled/async-sema'
+import { makeRe } from 'next/dist/compiled/picomatch'
+import os from 'os'
 import path from 'path'
 import {
-  STATIC_STATUS_PAGE_GET_INITIAL_PROPS_ERROR,
-  PUBLIC_DIR_MIDDLEWARE_CONFLICT,
-  MIDDLEWARE_FILENAME,
-  PAGES_DIR_ALIAS,
   INSTRUMENTATION_HOOK_FILENAME,
-  RSC_PREFETCH_SUFFIX,
-  RSC_SUFFIX,
+  MATCHED_PATH_HEADER,
+  MIDDLEWARE_FILENAME,
+  NEXT_CACHE_REVALIDATED_TAGS_HEADER,
+  NEXT_CACHE_REVALIDATE_TAG_TOKEN_HEADER,
   NEXT_RESUME_HEADER,
+  PAGES_DIR_ALIAS,
   PRERENDER_REVALIDATE_HEADER,
   PRERENDER_REVALIDATE_ONLY_GENERATED_HEADER,
-  NEXT_CACHE_REVALIDATE_TAG_TOKEN_HEADER,
-  NEXT_CACHE_REVALIDATED_TAGS_HEADER,
-  MATCHED_PATH_HEADER,
+  PUBLIC_DIR_MIDDLEWARE_CONFLICT,
+  RSC_PREFETCH_SUFFIX,
+  RSC_SUFFIX,
+  STATIC_STATUS_PAGE_GET_INITIAL_PROPS_ERROR,
 } from '../lib/constants'
 import { FileType, fileExists } from '../lib/file-exists'
 import { findPagesDir } from '../lib/find-pages-dir'
-import loadCustomRoutes, {
-  normalizeRouteRegex,
-} from '../lib/load-custom-routes'
 import type {
   CustomRoutes,
   Header,
@@ -47,171 +41,177 @@ import type {
   Rewrite,
   RouteHas,
 } from '../lib/load-custom-routes'
+import loadCustomRoutes, {
+  normalizeRouteRegex,
+} from '../lib/load-custom-routes'
 import { nonNullable } from '../lib/non-nullable'
+import { bold, yellow } from '../lib/picocolors'
 import { recursiveDelete } from '../lib/recursive-delete'
-import { verifyPartytownSetup } from '../lib/verify-partytown-setup'
 import { validateTurboNextConfig } from '../lib/turbopack-warning'
+import { verifyPartytownSetup } from '../lib/verify-partytown-setup'
+import { Worker } from '../lib/worker'
+import type { __ApiPreviewProps } from '../server/api-utils'
+import * as ciEnvironment from '../server/ci-info'
+import loadConfig from '../server/config'
+import { defaultConfig } from '../server/config-shared'
+import type { BuildManifest } from '../server/get-page-files'
+import { getPagePath } from '../server/require'
 import {
+  APP_BUILD_MANIFEST,
+  APP_PATHS_MANIFEST,
+  APP_PATH_ROUTES_MANIFEST,
   BUILD_ID_FILE,
   BUILD_MANIFEST,
   CLIENT_STATIC_FILES_PATH,
+  DYNAMIC_CSS_MANIFEST,
   EXPORT_DETAIL,
   EXPORT_MARKER,
+  FUNCTIONS_CONFIG_MANIFEST,
   IMAGES_MANIFEST,
+  MIDDLEWARE_BUILD_MANIFEST,
+  MIDDLEWARE_MANIFEST,
+  MIDDLEWARE_REACT_LOADABLE_MANIFEST,
+  NEXT_FONT_MANIFEST,
   PAGES_MANIFEST,
   PHASE_PRODUCTION_BUILD,
   PRERENDER_MANIFEST,
   REACT_LOADABLE_MANIFEST,
   ROUTES_MANIFEST,
+  RSC_MODULE_TYPES,
   SERVER_DIRECTORY,
   SERVER_FILES_MANIFEST,
-  STATIC_STATUS_PAGES,
-  MIDDLEWARE_MANIFEST,
-  APP_PATHS_MANIFEST,
-  APP_PATH_ROUTES_MANIFEST,
-  APP_BUILD_MANIFEST,
-  RSC_MODULE_TYPES,
-  NEXT_FONT_MANIFEST,
-  SUBRESOURCE_INTEGRITY_MANIFEST,
-  MIDDLEWARE_BUILD_MANIFEST,
-  MIDDLEWARE_REACT_LOADABLE_MANIFEST,
   SERVER_REFERENCE_MANIFEST,
-  FUNCTIONS_CONFIG_MANIFEST,
-  UNDERSCORE_NOT_FOUND_ROUTE_ENTRY,
+  STATIC_STATUS_PAGES,
+  SUBRESOURCE_INTEGRITY_MANIFEST,
   UNDERSCORE_NOT_FOUND_ROUTE,
-  DYNAMIC_CSS_MANIFEST,
+  UNDERSCORE_NOT_FOUND_ROUTE_ENTRY,
 } from '../shared/lib/constants'
+import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
 import {
+  getSortedRouteObjects,
   getSortedRoutes,
   isDynamicRoute,
-  getSortedRouteObjects,
 } from '../shared/lib/router/utils'
-import type { __ApiPreviewProps } from '../server/api-utils'
-import loadConfig from '../server/config'
-import type { BuildManifest } from '../server/get-page-files'
-import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
-import { getPagePath } from '../server/require'
-import * as ciEnvironment from '../server/ci-info'
 import {
-  turborepoTraceAccess,
   TurborepoAccessTraceResult,
+  turborepoTraceAccess,
   writeTurborepoAccessTraceResult,
 } from './turborepo-access-trace'
 
 import {
+  ACTION_HEADER,
+  NEXT_DID_POSTPONE_HEADER,
+  NEXT_ROUTER_PREFETCH_HEADER,
+  NEXT_ROUTER_SEGMENT_PREFETCH_HEADER,
+  NEXT_ROUTER_STATE_TREE_HEADER,
+  RSC_CONTENT_TYPE_HEADER,
+  RSC_HEADER,
+} from '../client/components/app-router-headers'
+import { createClientRouterFilter } from '../lib/create-client-router-filter'
+import { generateInterceptionRoutesRewrites } from '../lib/generate-interception-routes-rewrites'
+import { getFilesInDir } from '../lib/get-files-in-dir'
+import { isAppRouteRoute } from '../lib/is-app-route-route'
+import { isEdgeRuntime } from '../lib/is-edge-runtime'
+import type { NextError } from '../lib/is-error'
+import isError from '../lib/is-error'
+import { PAGE_TYPES } from '../lib/page-types'
+import { recursiveCopy } from '../lib/recursive-copy'
+import { recursiveReadDir } from '../lib/recursive-readdir'
+import { createValidFileMatcher } from '../server/lib/find-page-file'
+import { normalizeLocalePath } from '../shared/lib/i18n/normalize-locale-path'
+import { normalizePathSep } from '../shared/lib/page-path/normalize-path-sep'
+import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
+import { getNamedRouteRegex } from '../shared/lib/router/utils/route-regex'
+import type { EventBuildFeatureUsage } from '../telemetry/events'
+import {
+  EVENT_BUILD_FEATURE_USAGE,
+  eventBuildCompleted,
+  eventBuildFeatureUsage,
   eventBuildOptimize,
   eventCliSession,
-  eventBuildFeatureUsage,
   eventNextPlugins,
-  EVENT_BUILD_FEATURE_USAGE,
   eventPackageUsedInGetServerSideProps,
-  eventBuildCompleted,
 } from '../telemetry/events'
-import type { EventBuildFeatureUsage } from '../telemetry/events'
+import { eventSwcPlugins } from '../telemetry/events/swc-plugins'
 import { Telemetry } from '../telemetry/storage'
+import { flushAllTraces, setGlobal, trace, type Span } from '../trace'
 import { hadUnsupportedValue } from './analysis/get-page-static-info'
+import { NextBuildContext, type MappedPages } from './build-context'
 import {
   createPagesMapping,
   getStaticInfoIncludingLayouts,
   sortByPageExts,
 } from './entries'
-import { PAGE_TYPES } from '../lib/page-types'
 import { generateBuildId } from './generate-build-id'
 import { isWriteable } from './is-writeable'
 import * as Log from './output/log'
-import createSpinner from './spinner'
-import { trace, flushAllTraces, setGlobal, type Span } from '../trace'
-import {
-  detectConflictingPaths,
-  computeFromManifest,
-  getJsPageSizeInKb,
-  printCustomRoutes,
-  printTreeView,
-  copyTracedFiles,
-  isReservedPage,
-  isAppBuiltinNotFoundPage,
-  collectRoutesUsingEdgeRuntime,
-  collectMeta,
-} from './utils'
-import type { PageInfo, PageInfos, PrerenderedRoute } from './utils'
 import type { AppSegmentConfig } from './segment-config/app/app-segment-config'
-import { writeBuildId } from './write-build-id'
-import { normalizeLocalePath } from '../shared/lib/i18n/normalize-locale-path'
-import isError from '../lib/is-error'
-import type { NextError } from '../lib/is-error'
-import { isEdgeRuntime } from '../lib/is-edge-runtime'
-import { recursiveCopy } from '../lib/recursive-copy'
-import { recursiveReadDir } from '../lib/recursive-readdir'
+import createSpinner from './spinner'
 import {
+  createDefineEnv,
   loadBindings,
   lockfilePatchPromise,
-  teardownTraceSubscriber,
   teardownHeapProfiler,
-  createDefineEnv,
+  teardownTraceSubscriber,
 } from './swc'
-import { getNamedRouteRegex } from '../shared/lib/router/utils/route-regex'
-import { getFilesInDir } from '../lib/get-files-in-dir'
-import { eventSwcPlugins } from '../telemetry/events/swc-plugins'
-import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
-import {
-  ACTION_HEADER,
-  NEXT_ROUTER_PREFETCH_HEADER,
-  RSC_HEADER,
-  RSC_CONTENT_TYPE_HEADER,
-  NEXT_ROUTER_STATE_TREE_HEADER,
-  NEXT_DID_POSTPONE_HEADER,
-  NEXT_ROUTER_SEGMENT_PREFETCH_HEADER,
-} from '../client/components/app-router-headers'
-import { webpackBuild } from './webpack-build'
-import { NextBuildContext, type MappedPages } from './build-context'
-import { normalizePathSep } from '../shared/lib/page-path/normalize-path-sep'
-import { isAppRouteRoute } from '../lib/is-app-route-route'
-import { createClientRouterFilter } from '../lib/create-client-router-filter'
-import { createValidFileMatcher } from '../server/lib/find-page-file'
 import { startTypeChecking } from './type-check'
-import { generateInterceptionRoutesRewrites } from '../lib/generate-interception-routes-rewrites'
-
-import { buildDataRoute } from '../server/lib/router-utils/build-data-route'
-import { collectBuildTraces } from './collect-build-traces'
-import type { BuildTraceContext } from './webpack/plugins/next-trace-entrypoints-plugin'
-import { formatManifest } from './manifests/formatter/format-manifest'
+import type { PageInfo, PageInfos, PrerenderedRoute } from './utils'
 import {
+  collectMeta,
+  collectRoutesUsingEdgeRuntime,
+  computeFromManifest,
+  copyTracedFiles,
+  detectConflictingPaths,
+  getJsPageSizeInKb,
+  isAppBuiltinNotFoundPage,
+  isReservedPage,
+  printCustomRoutes,
+  printTreeView,
+} from './utils'
+import { webpackBuild } from './webpack-build'
+import { writeBuildId } from './write-build-id'
+
+import {
+  recordFetchMetrics,
   recordFrameworkVersion,
   updateBuildDiagnostics,
-  recordFetchMetrics,
 } from '../diagnostics/build-diagnostics'
-import { getStartServerInfo, logStartInfo } from '../server/lib/app-info-log'
-import type { NextEnabledDirectories } from '../server/base-server'
 import { hasCustomExportOutput } from '../export/utils'
+import { buildCustomRoute } from '../lib/build-custom-route'
+import { FallbackMode, fallbackModeToFallbackField } from '../lib/fallback'
+import { traceMemoryUsage } from '../lib/memory/trace'
+import { generateEncryptionKeyBase64 } from '../server/app-render/encryption-utils-server'
+import type { NextEnabledDirectories } from '../server/base-server'
 import {
+  formatIssue,
   getTurbopackJsConfig,
   handleEntrypoints,
-  type EntryIssuesMap,
-  handleRouteType,
   handlePagesErrorRoute,
-  formatIssue,
-  isRelevantWarning,
+  handleRouteType,
   isPersistentCachingEnabled,
+  isRelevantWarning,
+  type EntryIssuesMap,
 } from '../server/dev/turbopack-utils'
 import { TurbopackManifestLoader } from '../server/dev/turbopack/manifest-loader'
 import type { Entrypoints } from '../server/dev/turbopack/types'
-import { buildCustomRoute } from '../lib/build-custom-route'
-import { createProgress } from './progress'
-import { traceMemoryUsage } from '../lib/memory/trace'
-import { generateEncryptionKeyBase64 } from '../server/app-render/encryption-utils-server'
-import type { DeepReadonly } from '../shared/lib/deep-readonly'
-import uploadTrace from '../trace/upload-trace'
+import { getStartServerInfo, logStartInfo } from '../server/lib/app-info-log'
 import {
   checkIsAppPPREnabled,
   checkIsRoutePPREnabled,
 } from '../server/lib/experimental/ppr'
-import { FallbackMode, fallbackModeToFallbackField } from '../lib/fallback'
-import { RenderingMode } from './rendering-mode'
-import { getParamKeys } from '../server/request/fallback-params'
+import { buildDataRoute } from '../server/lib/router-utils/build-data-route'
 import {
   formatNodeOptions,
   getParsedNodeOptionsWithoutInspect,
 } from '../server/lib/utils'
+import { getParamKeys } from '../server/request/fallback-params'
+import type { DeepReadonly } from '../shared/lib/deep-readonly'
+import uploadTrace from '../trace/upload-trace'
+import { collectBuildTraces } from './collect-build-traces'
+import { formatManifest } from './manifests/formatter/format-manifest'
+import { createProgress } from './progress'
+import { RenderingMode } from './rendering-mode'
+import type { BuildTraceContext } from './webpack/plugins/next-trace-entrypoints-plugin'
 
 type Fallback = null | boolean | string
 
@@ -559,7 +559,6 @@ async function writeImagesManifest(
   })
 }
 
-const STANDALONE_DIRECTORY = 'standalone' as const
 async function writeStandaloneDirectory(
   nextBuildSpan: Span,
   distDir: string,
@@ -571,8 +570,12 @@ async function writeStandaloneDirectory(
   hasInstrumentationHook: boolean,
   staticPages: Set<string>,
   loadedEnvFiles: LoadedEnvFiles,
-  appDir: string | undefined
+  appDir: string | undefined,
+  outputMode: 'standalone' | 'bun'
 ) {
+  const STANDALONE_DIRECTORY =
+    outputMode === 'standalone' ? 'standalone' : 'bun'
+
   await nextBuildSpan
     .traceChild('write-standalone-directory')
     .traceAsyncFn(async () => {
@@ -3637,7 +3640,7 @@ export default async function build(
         )
       }
 
-      if (config.output === 'standalone') {
+      if (config.output === 'standalone' || config.output === 'bun') {
         await writeStandaloneDirectory(
           nextBuildSpan,
           distDir,
@@ -3649,7 +3652,8 @@ export default async function build(
           hasInstrumentationHook,
           staticPages,
           loadedEnvFiles,
-          appDir
+          appDir,
+          config.output
         )
       }
 

@@ -1,30 +1,30 @@
 import { existsSync } from 'fs'
-import { basename, extname, join, relative, isAbsolute, resolve } from 'path'
-import { pathToFileURL } from 'url'
 import findUp from 'next/dist/compiled/find-up'
+import { basename, extname, isAbsolute, join, relative, resolve } from 'path'
+import { pathToFileURL } from 'url'
 import * as Log from '../build/output/log'
 import { CONFIG_FILES, PHASE_DEVELOPMENT_SERVER } from '../shared/lib/constants'
-import { defaultConfig, normalizeConfig } from './config-shared'
 import type {
   ExperimentalConfig,
-  NextConfigComplete,
   NextConfig,
+  NextConfigComplete,
   TurboLoaderItem,
 } from './config-shared'
+import { defaultConfig, normalizeConfig } from './config-shared'
 
-import { loadWebpackHook } from './config-utils'
-import { imageConfigDefault } from '../shared/lib/image-config'
-import type { ImageConfig } from '../shared/lib/image-config'
 import { loadEnvConfig, updateInitialEnv } from '@next/env'
-import { flushAndExit } from '../telemetry/flush-and-exit'
 import { findRootDir } from '../lib/find-root'
-import { setHttpClientAndAgentOptions } from './setup-http-agent-env'
-import { pathHasPrefix } from '../shared/lib/router/utils/path-has-prefix'
+import type { ImageConfig } from '../shared/lib/image-config'
+import { imageConfigDefault } from '../shared/lib/image-config'
 import { matchRemotePattern } from '../shared/lib/match-remote-pattern'
+import { pathHasPrefix } from '../shared/lib/router/utils/path-has-prefix'
+import { flushAndExit } from '../telemetry/flush-and-exit'
+import { loadWebpackHook } from './config-utils'
+import { setHttpClientAndAgentOptions } from './setup-http-agent-env'
 
 import type { ZodError } from 'next/dist/compiled/zod'
-import { hasNextSupport } from '../server/ci-info'
 import { transpileConfig } from '../build/next-config-ts/transpile-config'
+import { hasNextSupport } from '../server/ci-info'
 import { dset } from '../shared/lib/dset'
 import { normalizeZodErrors } from '../shared/lib/zod'
 
@@ -1137,6 +1137,9 @@ export default async function loadConfig(
       // We only validate the config against schema in non minimal mode
       const { configSchema } =
         require('./config-schema') as typeof import('./config-schema')
+
+      console.log('OKOKOK')
+
       const state = configSchema.safeParse(userConfig)
 
       if (state.success === false) {
