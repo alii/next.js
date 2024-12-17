@@ -1,8 +1,4 @@
-import type { WebNextRequest, WebNextResponse } from './base-http/web'
-import type RenderResult from './render-result'
-import type { NextParsedUrlQuery, NextUrlWithParsedQuery } from './request-meta'
-import type { Params } from './request/params'
-import type { LoadComponentsReturnType } from './load-components'
+import { WebNextRequest, WebNextResponse } from './base-http/web'
 import type {
   LoadedRenderOpts,
   MiddlewareRoutingItem,
@@ -10,34 +6,39 @@ import type {
   Options,
   RouteHandler,
 } from './base-server'
-import type { Revalidate, ExpireTime } from './lib/revalidate'
+import type { ExpireTime, Revalidate } from './lib/revalidate'
+import type { LoadComponentsReturnType } from './load-components'
+import type RenderResult from './render-result'
+import type { NextParsedUrlQuery, NextUrlWithParsedQuery } from './request-meta'
+import type { Params } from './request/params'
 
+import { UNDERSCORE_NOT_FOUND_ROUTE } from '../api/constants'
+import { buildCustomRoute } from '../lib/build-custom-route'
+import { isAPIRoute } from '../lib/is-api-route'
+import type { Rewrite } from '../lib/load-custom-routes'
+import type { PAGE_TYPES } from '../lib/page-types'
+import { isDynamicRoute } from '../shared/lib/router/utils'
+import { removeTrailingSlash } from '../shared/lib/router/utils/remove-trailing-slash'
+import { getRouteMatcher } from '../shared/lib/router/utils/route-matcher'
+import { getNamedRouteRegex } from '../shared/lib/router/utils/route-regex'
 import { byteLength } from './api-utils/web'
+import type { ServerOnInstrumentationRequestError } from './app-render/types'
 import BaseServer, { NoFallbackError } from './base-server'
 import { generateETag } from './lib/etag'
+import { IncrementalCache } from './lib/incremental-cache'
 import { addRequestMeta } from './request-meta'
 import WebResponseCache from './response-cache/web'
-import { isAPIRoute } from '../lib/is-api-route'
-import { removeTrailingSlash } from '../shared/lib/router/utils/remove-trailing-slash'
-import { isDynamicRoute } from '../shared/lib/router/utils'
 import {
   interpolateDynamicPath,
-  normalizeVercelUrl,
   normalizeDynamicRouteParams,
+  normalizeVercelUrl,
 } from './server-utils'
-import { getNamedRouteRegex } from '../shared/lib/router/utils/route-regex'
-import { getRouteMatcher } from '../shared/lib/router/utils/route-matcher'
-import { IncrementalCache } from './lib/incremental-cache'
-import type { PAGE_TYPES } from '../lib/page-types'
-import type { Rewrite } from '../lib/load-custom-routes'
-import { buildCustomRoute } from '../lib/build-custom-route'
-import { UNDERSCORE_NOT_FOUND_ROUTE } from '../api/constants'
-import { getEdgeInstrumentationModule } from './web/globals'
-import type { ServerOnInstrumentationRequestError } from './app-render/types'
+import { NextRequestHint } from './web/adapter'
 import { getEdgePreviewProps } from './web/get-edge-preview-props'
+import { getEdgeInstrumentationModule } from './web/globals'
 
-interface WebServerOptions extends Options {
-  webServerConfig: {
+interface BunServerOptions extends Options {
+  bunServerConfig: {
     page: string
     pathname: string
     pagesType: PAGE_TYPES
@@ -56,16 +57,47 @@ interface WebServerOptions extends Options {
 
 type WebRouteHandler = RouteHandler<WebNextRequest, WebNextResponse>
 
-export default class NextWebServer extends BaseServer<
-  WebServerOptions,
+declare const Bun: {
+  serve(options: {
+    port: number
+    hostname?: string
+    fetch: (request: Request) => Promise<Response>
+  }): { reload(options: unknown): void }
+}
+
+export default class BunServer extends BaseServer<
+  BunServerOptions,
   WebNextRequest,
   WebNextResponse
 > {
-  constructor(options: WebServerOptions) {
+  private readonly server: { reload(options: unknown): void }
+
+  constructor(options: BunServerOptions) {
     super(options)
 
+    this.server = Bun.serve({
+      port: options.port ?? 3000,
+      hostname: options.hostname,
+
+      fetch: async (request) => {
+        const webNextRequest = new WebNextRequest(
+          new NextRequestHint({
+            init: request,
+            input: request,
+            page: this.serverOptions.bunServerConfig.page,
+          })
+        )
+
+        const webNextResponse = new WebNextResponse()
+
+        await this.handleRequest(webNextRequest, webNextResponse)
+
+        return webNextResponse.toResponse()
+      },
+    })
+
     // Extend `renderOpts`.
-    Object.assign(this.renderOpts, options.webServerConfig.extendRenderOpts)
+    Object.assign(this.renderOpts, options.bunServerConfig.extendRenderOpts)
   }
 
   protected async getIncrementalCache({
@@ -89,41 +121,42 @@ export default class NextWebServer extends BaseServer<
       maxMemoryCacheSize: this.nextConfig.cacheMaxMemorySize,
       flushToDisk: false,
       CurCacheHandler:
-        this.serverOptions.webServerConfig.incrementalCacheHandler,
+        this.serverOptions.bunServerConfig.incrementalCacheHandler,
       getPrerenderManifest: () => this.getPrerenderManifest(),
     })
   }
+
   protected getResponseCache() {
     return new WebResponseCache(this.minimalMode)
   }
 
   protected async hasPage(page: string) {
-    return page === this.serverOptions.webServerConfig.page
+    return page === this.serverOptions.bunServerConfig.page
   }
 
   protected getBuildId() {
-    return this.serverOptions.webServerConfig.extendRenderOpts.buildId
+    return this.serverOptions.bunServerConfig.extendRenderOpts.buildId
   }
 
   protected getEnabledDirectories() {
     return {
-      app: this.serverOptions.webServerConfig.pagesType === 'app',
-      pages: this.serverOptions.webServerConfig.pagesType === 'pages',
+      app: this.serverOptions.bunServerConfig.pagesType === 'app',
+      pages: this.serverOptions.bunServerConfig.pagesType === 'pages',
     }
   }
 
   protected getPagesManifest() {
     return {
       // keep same theme but server path doesn't need to be accurate
-      [this.serverOptions.webServerConfig.pathname]:
-        `server${this.serverOptions.webServerConfig.page}.js`,
+      [this.serverOptions.bunServerConfig.pathname]:
+        `server${this.serverOptions.bunServerConfig.page}.js`,
     }
   }
 
   protected getAppPathsManifest() {
-    const page = this.serverOptions.webServerConfig.page
+    const page = this.serverOptions.bunServerConfig.page
     return {
-      [this.serverOptions.webServerConfig.page]: `app${page}.js`,
+      [this.serverOptions.bunServerConfig.page]: `app${page}.js`,
     }
   }
 
@@ -145,7 +178,7 @@ export default class NextWebServer extends BaseServer<
   }
 
   protected getNextFontManifest() {
-    return this.serverOptions.webServerConfig.extendRenderOpts.nextFontManifest
+    return this.serverOptions.bunServerConfig.extendRenderOpts.nextFontManifest
   }
 
   protected handleCatchallRenderRequest: WebRouteHandler = async (
@@ -160,7 +193,7 @@ export default class NextWebServer extends BaseServer<
 
     // interpolate query information into page for dynamic route
     // so that rewritten paths are handled properly
-    const normalizedPage = this.serverOptions.webServerConfig.pathname
+    const normalizedPage = this.serverOptions.bunServerConfig.pathname
 
     if (pathname !== normalizedPage) {
       pathname = normalizedPage
@@ -231,7 +264,7 @@ export default class NextWebServer extends BaseServer<
     query: NextParsedUrlQuery,
     renderOpts: LoadedRenderOpts
   ): Promise<RenderResult> {
-    const { renderToHTML } = this.serverOptions.webServerConfig
+    const { renderToHTML } = this.serverOptions.bunServerConfig
     if (!renderToHTML) {
       throw new Error(
         'Invariant: routeModule should be configured when rendering pages'
@@ -321,7 +354,7 @@ export default class NextWebServer extends BaseServer<
     isAppPath: boolean
     url?: string
   }) {
-    const result = await this.serverOptions.webServerConfig.loadComponent(page)
+    const result = await this.serverOptions.bunServerConfig.loadComponent(page)
     if (!result) return null
 
     return {
@@ -397,7 +430,7 @@ export default class NextWebServer extends BaseServer<
 
   protected getinterceptionRoutePatterns(): RegExp[] {
     return (
-      this.serverOptions.webServerConfig.interceptionRouteRewrites?.map(
+      this.serverOptions.bunServerConfig.interceptionRouteRewrites?.map(
         (rewrite) => new RegExp(buildCustomRoute('rewrite', rewrite).regex)
       ) ?? []
     )

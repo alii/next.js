@@ -1,37 +1,39 @@
-import type { RequestData, FetchEventResult } from './types'
-import type { RequestInit } from './spec-extension/request'
+import type { TextMapGetter } from 'next/dist/compiled/@opentelemetry/api'
+import {
+  FLIGHT_HEADERS,
+  NEXT_ROUTER_PREFETCH_HEADER,
+} from '../../client/components/app-router-headers'
+import { normalizeRscURL } from '../../shared/lib/router/utils/app-paths'
+import { relativizeURL } from '../../shared/lib/router/utils/relativize-url'
+import { getBuiltinRequestContext } from '../after/builtin-request-context'
+import { workAsyncStorage } from '../app-render/work-async-storage.external'
+import { workUnitAsyncStorage } from '../app-render/work-unit-async-storage.external'
+import { createRequestStoreForAPI } from '../async-storage/request-store'
+import { createWorkStore } from '../async-storage/work-store'
+import { stripInternalSearchParams } from '../internal-utils'
+import { MiddlewareSpan } from '../lib/trace/constants'
+import { getTracer } from '../lib/trace/tracer'
 import { PageSignatureError } from './error'
-import { fromNodeOutgoingHttpHeaders, normalizeNextQueryParam } from './utils'
+import { getEdgePreviewProps } from './get-edge-preview-props'
+import { ensureInstrumentationRegistered } from './globals'
+import { NextURL } from './next-url'
 import {
   NextFetchEvent,
   getWaitUntilPromiseFromEvent,
 } from './spec-extension/fetch-event'
+import type { RequestInit } from './spec-extension/request'
 import { NextRequest } from './spec-extension/request'
 import { NextResponse } from './spec-extension/response'
-import { relativizeURL } from '../../shared/lib/router/utils/relativize-url'
-import { NextURL } from './next-url'
-import { stripInternalSearchParams } from '../internal-utils'
-import { normalizeRscURL } from '../../shared/lib/router/utils/app-paths'
-import { FLIGHT_HEADERS } from '../../client/components/app-router-headers'
-import { ensureInstrumentationRegistered } from './globals'
-import { createRequestStoreForAPI } from '../async-storage/request-store'
-import { workUnitAsyncStorage } from '../app-render/work-unit-async-storage.external'
-import { createWorkStore } from '../async-storage/work-store'
-import { workAsyncStorage } from '../app-render/work-async-storage.external'
-import { NEXT_ROUTER_PREFETCH_HEADER } from '../../client/components/app-router-headers'
-import { getTracer } from '../lib/trace/tracer'
-import type { TextMapGetter } from 'next/dist/compiled/@opentelemetry/api'
-import { MiddlewareSpan } from '../lib/trace/constants'
+import type { FetchEventResult, RequestData } from './types'
+import { fromNodeOutgoingHttpHeaders, normalizeNextQueryParam } from './utils'
 import { CloseController } from './web-on-close'
-import { getEdgePreviewProps } from './get-edge-preview-props'
-import { getBuiltinRequestContext } from '../after/builtin-request-context'
 
 export class NextRequestHint extends NextRequest {
   sourcePage: string
   fetchMetrics: FetchEventResult['fetchMetrics'] | undefined
 
   constructor(params: {
-    init: RequestInit
+    init: Request | RequestInit
     input: Request | string
     page: string
   }) {

@@ -1,8 +1,4 @@
 import type { WebNextRequest, WebNextResponse } from './base-http/web'
-import type RenderResult from './render-result'
-import type { NextParsedUrlQuery, NextUrlWithParsedQuery } from './request-meta'
-import type { Params } from './request/params'
-import type { LoadComponentsReturnType } from './load-components'
 import type {
   LoadedRenderOpts,
   MiddlewareRoutingItem,
@@ -10,31 +6,35 @@ import type {
   Options,
   RouteHandler,
 } from './base-server'
-import type { Revalidate, ExpireTime } from './lib/revalidate'
+import type { ExpireTime, Revalidate } from './lib/revalidate'
+import type { LoadComponentsReturnType } from './load-components'
+import type RenderResult from './render-result'
+import type { NextParsedUrlQuery, NextUrlWithParsedQuery } from './request-meta'
+import type { Params } from './request/params'
 
+import { UNDERSCORE_NOT_FOUND_ROUTE } from '../api/constants'
+import { buildCustomRoute } from '../lib/build-custom-route'
+import { isAPIRoute } from '../lib/is-api-route'
+import type { Rewrite } from '../lib/load-custom-routes'
+import type { PAGE_TYPES } from '../lib/page-types'
+import { isDynamicRoute } from '../shared/lib/router/utils'
+import { removeTrailingSlash } from '../shared/lib/router/utils/remove-trailing-slash'
+import { getRouteMatcher } from '../shared/lib/router/utils/route-matcher'
+import { getNamedRouteRegex } from '../shared/lib/router/utils/route-regex'
 import { byteLength } from './api-utils/web'
+import type { ServerOnInstrumentationRequestError } from './app-render/types'
 import BaseServer, { NoFallbackError } from './base-server'
 import { generateETag } from './lib/etag'
+import { IncrementalCache } from './lib/incremental-cache'
 import { addRequestMeta } from './request-meta'
 import WebResponseCache from './response-cache/web'
-import { isAPIRoute } from '../lib/is-api-route'
-import { removeTrailingSlash } from '../shared/lib/router/utils/remove-trailing-slash'
-import { isDynamicRoute } from '../shared/lib/router/utils'
 import {
   interpolateDynamicPath,
-  normalizeVercelUrl,
   normalizeDynamicRouteParams,
+  normalizeVercelUrl,
 } from './server-utils'
-import { getNamedRouteRegex } from '../shared/lib/router/utils/route-regex'
-import { getRouteMatcher } from '../shared/lib/router/utils/route-matcher'
-import { IncrementalCache } from './lib/incremental-cache'
-import type { PAGE_TYPES } from '../lib/page-types'
-import type { Rewrite } from '../lib/load-custom-routes'
-import { buildCustomRoute } from '../lib/build-custom-route'
-import { UNDERSCORE_NOT_FOUND_ROUTE } from '../api/constants'
-import { getEdgeInstrumentationModule } from './web/globals'
-import type { ServerOnInstrumentationRequestError } from './app-render/types'
 import { getEdgePreviewProps } from './web/get-edge-preview-props'
+import { getEdgeInstrumentationModule } from './web/globals'
 
 interface WebServerOptions extends Options {
   webServerConfig: {

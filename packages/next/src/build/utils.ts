@@ -2004,9 +2004,7 @@ export async function copyTracedFiles(
   hasInstrumentationHook: boolean,
   staticPages: Set<string>
 ) {
-  const isBun = serverConfig.output === 'bun'
-  console.log('OUTPUT IS BUN', { isBun })
-  const outputPath = path.join(distDir, isBun ? 'bun' : 'standalone')
+  const outputPath = path.join(distDir, 'standalone')
 
   let moduleType = false
   const nextConfig = {

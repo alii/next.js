@@ -559,6 +559,7 @@ async function writeImagesManifest(
   })
 }
 
+const STANDALONE_DIRECTORY = 'standalone'
 async function writeStandaloneDirectory(
   nextBuildSpan: Span,
   distDir: string,
@@ -573,8 +574,7 @@ async function writeStandaloneDirectory(
   appDir: string | undefined,
   outputMode: 'standalone' | 'bun'
 ) {
-  const STANDALONE_DIRECTORY =
-    outputMode === 'standalone' ? 'standalone' : 'bun'
+  console.log('writeStandaloneDirectory', { outputMode })
 
   await nextBuildSpan
     .traceChild('write-standalone-directory')
