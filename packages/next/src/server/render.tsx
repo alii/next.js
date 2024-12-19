@@ -409,7 +409,7 @@ export async function renderToHTMLImpl(
   extra: RenderOptsExtra
 ): Promise<RenderResult> {
   // Adds support for reading `cookies` in `getServerSideProps` when SSR.
-  setLazyProp({ req: req as any }, 'cookies', getCookieParser(req.headers))
+  setLazyProp({ req }, 'cookies', getCookieParser(req.headers))
 
   const metadata: PagesRenderResultMetadata = {}
 

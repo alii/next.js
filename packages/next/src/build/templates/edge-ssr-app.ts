@@ -1,18 +1,18 @@
-import '../../server/web/globals'
-import { adapter } from '../../server/web/adapter'
-import { getRender } from '../webpack/loaders/next-edge-ssr-loader/render'
 import { IncrementalCache } from '../../server/lib/incremental-cache'
+import { adapter } from '../../server/web/adapter'
+import '../../server/web/globals'
+import { getRender } from '../webpack/loaders/next-edge-ssr-loader/render'
 
-import { renderToHTMLOrFlight as renderToHTML } from '../../server/app-render/app-render'
 import * as pageMod from 'VAR_USERLAND'
+import { renderToHTMLOrFlight as renderToHTML } from '../../server/app-render/app-render'
 
-import type { DocumentType } from '../../shared/lib/utils'
+import { PAGE_TYPES } from '../../lib/page-types'
+import { createServerModuleMap } from '../../server/app-render/action-utils'
+import { setReferenceManifestsSingleton } from '../../server/app-render/encryption-utils'
+import type { NextConfigComplete } from '../../server/config-shared'
 import type { BuildManifest } from '../../server/get-page-files'
 import type { RequestData } from '../../server/web/types'
-import type { NextConfigComplete } from '../../server/config-shared'
-import { PAGE_TYPES } from '../../lib/page-types'
-import { setReferenceManifestsSingleton } from '../../server/app-render/encryption-utils'
-import { createServerModuleMap } from '../../server/app-render/action-utils'
+import type { DocumentType } from '../../shared/lib/utils'
 
 declare const incrementalCacheHandler: any
 // OPTIONAL_IMPORT:incrementalCacheHandler

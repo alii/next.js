@@ -5,7 +5,6 @@ import type {
   DynamicCssManifest,
   ReactLoadableManifest,
 } from '../../../../server/load-components'
-import type { NextFetchEvent } from '../../../../server/web/spec-extension/fetch-event'
 import type { AppType, DocumentType } from '../../../../shared/lib/utils'
 import type { ClientReferenceManifest } from '../../plugins/flight-manifest-plugin'
 import type { NextFontManifest } from '../../plugins/next-font-manifest-plugin'
@@ -19,7 +18,6 @@ import {
 } from '../../../../server/base-http/web'
 import WebServer from '../../../../server/web-server'
 import type { NextRequestHint } from '../../../../server/web/adapter'
-import { internal_getCurrentFunctionWaitUntil } from '../../../../server/web/internal-edge-wait-until'
 import { normalizeAppPath } from '../../../../shared/lib/router/utils/app-paths'
 import type { SizeLimit } from '../../../../types'
 
@@ -155,27 +153,20 @@ export function getRender({
 
   const handler = server.getRequestHandler()
 
-  return async function render(
-    request: NextRequestHint,
-    event?: NextFetchEvent
-  ) {
-    const extendedReq = new WebNextRequest(request)
+  return function getBunRender(hint: NextRequestHint) {
+    const extendedReq = new WebNextRequest(hint)
     const extendedRes = new WebNextResponse(undefined)
+    const result = extendedRes.toResponse()
 
-    handler(extendedReq, extendedRes)
-    const result = await extendedRes.toResponse()
-    request.fetchMetrics = extendedReq.fetchMetrics
-
-    if (event?.waitUntil) {
-      // TODO(after):
-      // remove `internal_runWithWaitUntil` and the `internal-edge-wait-until` module
-      // when consumers switch to `after`.
-      const waitUntilPromise = internal_getCurrentFunctionWaitUntil()
-      if (waitUntilPromise) {
-        event.waitUntil(waitUntilPromise)
-      }
+    const run = () => {
+      handler(extendedReq, extendedRes)
     }
 
-    return result
+    return {
+      run,
+      result,
+      extendedReq,
+      extendedRes,
+    }
   }
 }

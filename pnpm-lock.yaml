@@ -867,7 +867,7 @@ importers:
         version: 8.4.31
       react:
         specifier: 19.0.0-rc-7283a213-20241206
-        version: 19.0.0-rc-7283a213-20241206
+        version: 19.0.0-rc-f90a6bcc-20240827
       react-dom:
         specifier: 19.0.0-rc-7283a213-20241206
         version: 19.0.0-rc-7283a213-20241206(react@19.0.0-rc-7283a213-20241206)
@@ -876,7 +876,7 @@ importers:
         version: 1.77.8
       styled-jsx:
         specifier: 5.1.6
-        version: 5.1.6(@babel/core@7.22.5)(babel-plugin-macros@3.1.0)(react@19.0.0-rc-7283a213-20241206)
+        version: 5.1.6(@babel/core@7.22.5)(react@19.0.0-rc-f90a6bcc-20240827)
     optionalDependencies:
       sharp:
         specifier: ^0.33.5
@@ -1460,7 +1460,7 @@ importers:
         version: 1.0.35
       unistore:
         specifier: 3.4.1
-        version: 3.4.1(react@19.0.0-rc-7283a213-20241206)
+        version: 3.4.1(react@19.0.0-rc-f90a6bcc-20240827)
       util:
         specifier: 0.12.4
         version: 0.12.4
@@ -12935,6 +12935,7 @@ packages:
     engines: {node: '>=0.6.0', teleport: '>=0.2.0'}
     deprecated: |-
       You or someone you depend on is using Q, the JavaScript Promise library that gave JavaScript developers strong feelings about promises. They can almost certainly migrate to the native JavaScript promise now. Thank you literally everyone for joining me in this bet against the odds. Be excellent to each other.
+
       (For a CapTP with native promises, see @endo/eventual-send and @endo/captp)
 
   qs@6.11.0:
@@ -31494,6 +31495,13 @@ snapshots:
       '@babel/core': 7.22.5
       babel-plugin-macros: 3.1.0
 
+  styled-jsx@5.1.6(@babel/core@7.22.5)(react@19.0.0-rc-f90a6bcc-20240827):
+    dependencies:
+      client-only: 0.0.1
+      react: 19.0.0-rc-f90a6bcc-20240827
+    optionalDependencies:
+      '@babel/core': 7.22.5
+
   stylehacks@4.0.3:
     dependencies:
       browserslist: 4.22.2
@@ -32300,9 +32308,9 @@ snapshots:
       unist-util-is: 6.0.0
       unist-util-visit-parents: 6.0.1
 
-  unistore@3.4.1(react@19.0.0-rc-7283a213-20241206):
+  unistore@3.4.1(react@19.0.0-rc-f90a6bcc-20240827):
     optionalDependencies:
-      react: 19.0.0-rc-7283a213-20241206
+      react: 19.0.0-rc-f90a6bcc-20240827
 
   universal-github-app-jwt@1.1.1:
     dependencies:
