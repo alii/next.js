@@ -36,7 +36,13 @@ export const isWebNextResponse = (
  */
 export const isNodeNextRequest = (
   req: BaseNextRequest
-): req is NodeNextRequest => process.env.NEXT_RUNTIME !== 'edge'
+): req is NodeNextRequest =>
+  process.env.NEXT_RUNTIME !== 'edge' &&
+  'originalRequest' in req &&
+  typeof req.originalRequest === 'object' &&
+  req.originalRequest !== null &&
+  'on' in req.originalRequest &&
+  req.originalRequest.on instanceof Function
 
 /**
  * Type guard to determine if a response is a NodeNextResponse. This does not
@@ -46,4 +52,5 @@ export const isNodeNextRequest = (
  */
 export const isNodeNextResponse = (
   res: BaseNextResponse
-): res is NodeNextResponse => process.env.NEXT_RUNTIME !== 'edge'
+): res is NodeNextResponse =>
+  process.env.NEXT_RUNTIME !== 'edge' && 'originalResponse' in res
