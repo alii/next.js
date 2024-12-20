@@ -84,7 +84,7 @@ export function getRender({
   const server = new WebServer({
     dev,
     conf: config,
-    minimalMode: true,
+    minimalMode: true, // staticDir is handled by Bun.serve({static}) so we should mark the server as minimal
     webServerConfig: {
       page,
       pathname: isAppPath ? normalizeAppPath(page) : page,
