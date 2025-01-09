@@ -4,34 +4,34 @@ import {
   UNDERSCORE_NOT_FOUND_ROUTE_ENTRY,
   type ValueOf,
 } from '../../../../shared/lib/constants'
-import type { ModuleTuple, CollectedMetadata } from '../metadata/types'
+import type { CollectedMetadata, ModuleTuple } from '../metadata/types'
 
+import { promises as fs } from 'fs'
 import path from 'path'
-import { bold } from '../../../../lib/picocolors'
-import { getModuleBuildInfo } from '../get-module-build-info'
-import { verifyRootLayout } from '../../../../lib/verify-root-layout'
-import * as Log from '../../../output/log'
+import type { Compilation } from 'webpack'
+import { PARALLEL_ROUTE_DEFAULT_PATH } from '../../../../client/components/parallel-route-default'
 import { APP_DIR_ALIAS } from '../../../../lib/constants'
+import { getFilesInDir } from '../../../../lib/get-files-in-dir'
+import { isAppRouteRoute } from '../../../../lib/is-app-route-route'
+import { bold } from '../../../../lib/picocolors'
+import { verifyRootLayout } from '../../../../lib/verify-root-layout'
+import type { NextConfig } from '../../../../server/config-shared'
+import { AppPathnameNormalizer } from '../../../../server/normalizers/built/app/app-pathname-normalizer'
+import {
+  DEFAULT_SEGMENT_KEY,
+  isGroupSegment,
+  PAGE_SEGMENT_KEY,
+} from '../../../../shared/lib/segment'
+import type { MiddlewareConfig } from '../../../analysis/get-page-static-info'
+import { loadEntrypoint } from '../../../load-entrypoint'
+import * as Log from '../../../output/log'
+import type { PageExtensions } from '../../../page-extensions-type'
+import { isAppBuiltinNotFoundPage } from '../../../utils'
+import { getModuleBuildInfo } from '../get-module-build-info'
 import {
   createMetadataExportsCode,
   createStaticMetadataFromRoute,
 } from '../metadata/discover'
-import { promises as fs } from 'fs'
-import { isAppRouteRoute } from '../../../../lib/is-app-route-route'
-import type { NextConfig } from '../../../../server/config-shared'
-import { AppPathnameNormalizer } from '../../../../server/normalizers/built/app/app-pathname-normalizer'
-import type { MiddlewareConfig } from '../../../analysis/get-page-static-info'
-import { isAppBuiltinNotFoundPage } from '../../../utils'
-import { loadEntrypoint } from '../../../load-entrypoint'
-import {
-  isGroupSegment,
-  DEFAULT_SEGMENT_KEY,
-  PAGE_SEGMENT_KEY,
-} from '../../../../shared/lib/segment'
-import { getFilesInDir } from '../../../../lib/get-files-in-dir'
-import type { PageExtensions } from '../../../page-extensions-type'
-import { PARALLEL_ROUTE_DEFAULT_PATH } from '../../../../client/components/parallel-route-default'
-import type { Compilation } from 'webpack'
 import { createAppRouteCode } from './create-app-route-code'
 
 export type AppLoaderOptions = {

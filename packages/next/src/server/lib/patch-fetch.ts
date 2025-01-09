@@ -3,29 +3,29 @@ import type {
   WorkStore,
 } from '../app-render/work-async-storage.external'
 
-import { AppRenderSpan, NextNodeServerSpan } from './trace/constants'
-import { getTracer, SpanKind } from './trace/tracer'
 import {
   CACHE_ONE_YEAR,
   INFINITE_CACHE,
   NEXT_CACHE_TAG_MAX_ITEMS,
   NEXT_CACHE_TAG_MAX_LENGTH,
 } from '../../lib/constants'
+import { waitAtLeastOneReactRenderTask } from '../../lib/scheduler'
 import { markCurrentScopeAsDynamic } from '../app-render/dynamic-rendering'
-import { makeHangingPromise } from '../dynamic-rendering-utils'
-import type { FetchMetric } from '../base-http'
-import { createDedupeFetch } from './dedupe-fetch'
 import type {
-  WorkUnitAsyncStorage,
   RequestStore,
+  WorkUnitAsyncStorage,
 } from '../app-render/work-unit-async-storage.external'
+import type { FetchMetric } from '../base-http'
+import { makeHangingPromise } from '../dynamic-rendering-utils'
 import {
   CachedRouteKind,
   IncrementalCacheKind,
   type CachedFetchData,
 } from '../response-cache'
-import { waitAtLeastOneReactRenderTask } from '../../lib/scheduler'
 import { cloneResponse } from './clone-response'
+import { createDedupeFetch } from './dedupe-fetch'
+import { AppRenderSpan, NextNodeServerSpan } from './trace/constants'
+import { getTracer, SpanKind } from './trace/tracer'
 
 const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge'
 

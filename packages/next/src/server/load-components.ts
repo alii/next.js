@@ -1,37 +1,37 @@
+import type { ActionManifest } from '../build/webpack/plugins/flight-client-entry-plugin'
+import type { ClientReferenceManifest } from '../build/webpack/plugins/flight-manifest-plugin'
 import type {
   AppType,
   DocumentType,
   NextComponentType,
 } from '../shared/lib/utils'
-import type { ClientReferenceManifest } from '../build/webpack/plugins/flight-manifest-plugin'
 import type {
-  PageConfig,
-  GetStaticPaths,
   GetServerSideProps,
+  GetStaticPaths,
   GetStaticProps,
+  PageConfig,
 } from '../types'
-import type { RouteModule } from './route-modules/route-module'
 import type { BuildManifest } from './get-page-files'
-import type { ActionManifest } from '../build/webpack/plugins/flight-client-entry-plugin'
+import type { RouteModule } from './route-modules/route-module'
 
+import { join } from 'path'
+import { interopDefault } from '../lib/interop-default'
+import { isMetadataRoute } from '../lib/metadata/is-metadata-route'
+import { wait } from '../lib/wait'
 import {
   BUILD_MANIFEST,
-  REACT_LOADABLE_MANIFEST,
   CLIENT_REFERENCE_MANIFEST,
-  SERVER_REFERENCE_MANIFEST,
   DYNAMIC_CSS_MANIFEST,
+  REACT_LOADABLE_MANIFEST,
+  SERVER_REFERENCE_MANIFEST,
 } from '../shared/lib/constants'
-import { join } from 'path'
-import { requirePage } from './require'
-import { interopDefault } from '../lib/interop-default'
-import { getTracer } from './lib/trace/tracer'
-import { LoadComponentsSpan } from './lib/trace/constants'
-import { evalManifest, loadManifest } from './load-manifest'
-import { wait } from '../lib/wait'
-import { setReferenceManifestsSingleton } from './app-render/encryption-utils'
-import { createServerModuleMap } from './app-render/action-utils'
 import type { DeepReadonly } from '../shared/lib/deep-readonly'
-import { isMetadataRoute } from '../lib/metadata/is-metadata-route'
+import { createServerModuleMap } from './app-render/action-utils'
+import { setReferenceManifestsSingleton } from './app-render/encryption-utils'
+import { LoadComponentsSpan } from './lib/trace/constants'
+import { getTracer } from './lib/trace/tracer'
+import { evalManifest, loadManifest } from './load-manifest'
+import { requirePage } from './require'
 
 export type ManifestItem = {
   id: number | string
@@ -131,7 +131,10 @@ async function loadClientReferenceManifest(
   }
 }
 
-async function loadComponentsImpl<N = any>({
+/**
+ * @internal Exported for access without the tracer
+ */
+export async function loadComponentsImpl<N = any>({
   distDir,
   page,
   isAppPath,

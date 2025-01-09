@@ -1,21 +1,21 @@
-import type { NextRequest } from './spec-extension/request'
 import type {
   AppRouteRouteHandlerContext,
   AppRouteRouteModule,
 } from '../route-modules/app-route/module'
+import type { NextRequest } from './spec-extension/request'
 
 import './globals'
 
-import { adapter, type AdapterOptions } from './adapter'
+import { searchParamsToUrlQuery } from '../../shared/lib/router/utils/querystring'
+import type { NextConfigComplete } from '../config-shared'
 import { IncrementalCache } from '../lib/incremental-cache'
 import { RouteMatcher } from '../route-matchers/route-matcher'
-import type { NextFetchEvent } from './spec-extension/fetch-event'
-import { internal_getCurrentFunctionWaitUntil } from './internal-edge-wait-until'
 import { getUtils } from '../server-utils'
-import { searchParamsToUrlQuery } from '../../shared/lib/router/utils/querystring'
-import { CloseController, trackStreamConsumed } from './web-on-close'
+import { adapter, type AdapterOptions } from './adapter'
 import { getEdgePreviewProps } from './get-edge-preview-props'
-import type { NextConfigComplete } from '../config-shared'
+import { internal_getCurrentFunctionWaitUntil } from './internal-edge-wait-until'
+import type { NextFetchEvent } from './spec-extension/fetch-event'
+import { CloseController, trackStreamConsumed } from './web-on-close'
 
 export interface WrapOptions {
   nextConfig: NextConfigComplete
@@ -57,7 +57,7 @@ export class EdgeRouteModuleWrapper {
     const wrapper = new EdgeRouteModuleWrapper(routeModule, options.nextConfig)
 
     // Return the wrapping function.
-    return (opts: AdapterOptions) => {
+    return (opts: AdapterOptions & { handler?: AdapterOptions['handler'] }) => {
       return adapter({
         ...opts,
         IncrementalCache,

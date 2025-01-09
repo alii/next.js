@@ -5,8 +5,8 @@ import type {
 import { INTERCEPTION_ROUTE_MARKERS } from '../../../server/lib/interception-routes'
 import type { Params } from '../../../server/request/params'
 import {
-  isGroupSegment,
   DEFAULT_SEGMENT_KEY,
+  isGroupSegment,
   PAGE_SEGMENT_KEY,
 } from '../../../shared/lib/segment'
 import { matchSegment } from '../match-segments'
