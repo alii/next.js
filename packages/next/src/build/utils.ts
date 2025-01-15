@@ -1460,8 +1460,69 @@ export function detectConflictingPaths(
   }
 }
 
+export function getServerOutputContent(options: {
+  output: 'standalone' | 'bun'
+  isModule: boolean
+  nextConfig: NextConfigComplete
+}) {
+  if (options.output === 'bun') {
+    return 'TODO'
+  } else {
+    return `${
+      options.isModule
+        ? `performance.mark('next-start');
+import path from 'path'
+import { fileURLToPath } from 'url'
+import module from 'module'
+const require = module.createRequire(import.meta.url)
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
+`
+        : `const path = require('path')`
+    }
+
+const dir = path.join(__dirname)
+
+process.env.NODE_ENV = 'production'
+process.chdir(__dirname)
+
+const currentPort = parseInt(process.env.PORT, 10) || 3000
+const hostname = process.env.HOSTNAME || '0.0.0.0'
+
+let keepAliveTimeout = parseInt(process.env.KEEP_ALIVE_TIMEOUT, 10)
+const nextConfig = ${JSON.stringify(options.nextConfig)}
+
+process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(nextConfig)
+
+require('next')
+const { startServer } = require('next/dist/server/lib/start-server')
+
+if (
+  Number.isNaN(keepAliveTimeout) ||
+  !Number.isFinite(keepAliveTimeout) ||
+  keepAliveTimeout < 0
+) {
+  keepAliveTimeout = undefined
+}
+
+startServer({
+  dir,
+  isDev: false,
+  config: nextConfig,
+  hostname,
+  port: currentPort,
+  allowRetry: false,
+  keepAliveTimeout,
+}).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});`
+  }
+}
+
 export async function copyTracedFiles(
-  STANDALONE_DIRECTORY: string,
+  /** This will be like `'bun'` or `'standalone'` but this is NOT necessarily the same as the `output` config option */
+  standaloneDirectoryName: string,
+  output: 'standalone' | 'bun', // `export` is invalid here, so it's safe to assume we're either standalone or bun here
   dir: string,
   distDir: string,
   pageKeys: readonly string[],
@@ -1472,12 +1533,9 @@ export async function copyTracedFiles(
   hasInstrumentationHook: boolean,
   staticPages: Set<string>
 ) {
-  const outputPath = path.join(distDir, STANDALONE_DIRECTORY)
+  const outputPath = path.join(distDir, standaloneDirectoryName)
   let moduleType = false
-  const nextConfig = {
-    ...serverConfig,
-    distDir: `./${path.relative(dir, distDir)}`,
-  }
+
   try {
     const packageJsonPath = path.join(distDir, '../package.json')
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'))
@@ -1608,59 +1666,19 @@ export async function copyTracedFiles(
     path.relative(tracingRoot, dir),
     'server.js'
   )
+
   await fs.mkdir(path.dirname(serverOutputPath), { recursive: true })
 
-  await fs.writeFile(
-    serverOutputPath,
-    `${
-      moduleType
-        ? `performance.mark('next-start');
-import path from 'path'
-import { fileURLToPath } from 'url'
-import module from 'module'
-const require = module.createRequire(import.meta.url)
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
-`
-        : `const path = require('path')`
-    }
+  const serverOutputContent = getServerOutputContent({
+    output,
+    isModule: moduleType,
+    nextConfig: {
+      ...serverConfig,
+      distDir: `./${path.relative(dir, distDir)}`,
+    },
+  })
 
-const dir = path.join(__dirname)
-
-process.env.NODE_ENV = 'production'
-process.chdir(__dirname)
-
-const currentPort = parseInt(process.env.PORT, 10) || 3000
-const hostname = process.env.HOSTNAME || '0.0.0.0'
-
-let keepAliveTimeout = parseInt(process.env.KEEP_ALIVE_TIMEOUT, 10)
-const nextConfig = ${JSON.stringify(nextConfig)}
-
-process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(nextConfig)
-
-require('next')
-const { startServer } = require('next/dist/server/lib/start-server')
-
-if (
-  Number.isNaN(keepAliveTimeout) ||
-  !Number.isFinite(keepAliveTimeout) ||
-  keepAliveTimeout < 0
-) {
-  keepAliveTimeout = undefined
-}
-
-startServer({
-  dir,
-  isDev: false,
-  config: nextConfig,
-  hostname,
-  port: currentPort,
-  allowRetry: false,
-  keepAliveTimeout,
-}).catch((err) => {
-  console.error(err);
-  process.exit(1);
-});`
-  )
+  await fs.writeFile(serverOutputPath, serverOutputContent)
 }
 
 export function isReservedPage(page: string) {

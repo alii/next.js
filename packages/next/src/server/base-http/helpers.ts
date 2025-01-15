@@ -1,4 +1,5 @@
 import type { BaseNextRequest, BaseNextResponse } from './'
+import { BunNextRequest, BunNextResponse } from './bun'
 import type { NodeNextRequest, NodeNextResponse } from './node'
 import type { WebNextRequest, WebNextResponse } from './web'
 
@@ -49,5 +50,11 @@ export const isNodeNextResponse = (
 ): res is NodeNextResponse => process.env.NEXT_RUNTIME !== 'edge'
 
 declare const Bun: unknown
-
 export const isBun = typeof Bun !== 'undefined'
+
+export const isBunNextRequest = (req: BaseNextRequest): req is BunNextRequest =>
+  req instanceof BunNextRequest
+
+export const isBunNextResponse = (
+  res: BaseNextResponse
+): res is BunNextResponse => res instanceof BunNextResponse

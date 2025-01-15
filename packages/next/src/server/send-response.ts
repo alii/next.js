@@ -1,5 +1,5 @@
 import type { BaseNextRequest, BaseNextResponse } from './base-http'
-import { isBun, isNodeNextResponse } from './base-http/helpers'
+import { isNodeNextResponse } from './base-http/helpers'
 
 import { pipeToNodeResponse } from './pipe-readable'
 import { splitCookiesString } from './web/utils'
@@ -17,16 +17,6 @@ export async function sendResponse(
   response: Response,
   waitUntil?: Promise<unknown>
 ): Promise<void> {
-  if (isBun) {
-    const dest = res.destination as WritableStream
-
-    if (response.body && req.method !== 'HEAD') {
-      await response.body.pipeTo(dest)
-    } else {
-      await dest.close()
-    }
-  }
-
   if (
     // The type check here ensures that `req` is correctly typed, and the
     // environment variable check provides dead code elimination.
