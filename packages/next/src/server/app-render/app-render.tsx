@@ -1,188 +1,188 @@
-import type {
-  ActionResult,
-  DynamicParamTypesShort,
-  FlightRouterState,
-  RenderOpts,
-  Segment,
-  CacheNodeSeedData,
-  PreloadCallbacks,
-  RSCPayload,
-  FlightData,
-  InitialRSCPayload,
-  FlightDataPath,
-} from './types'
-import {
-  workAsyncStorage,
-  type WorkStore,
-} from '../app-render/work-async-storage.external'
-import type { RequestStore } from '../app-render/work-unit-async-storage.external'
-import type { NextParsedUrlQuery } from '../request-meta'
-import type { LoaderTree } from '../lib/app-dir-module'
-import type { AppPageModule } from '../route-modules/app-page/module'
+import type { IncomingHttpHeaders } from 'http'
 import type {
   ClientReferenceManifest,
   ManifestNode,
 } from '../../build/webpack/plugins/flight-manifest-plugin'
 import type { DeepReadonly } from '../../shared/lib/deep-readonly'
+import {
+  workAsyncStorage,
+  type WorkStore,
+} from '../app-render/work-async-storage.external'
+import type { RequestStore } from '../app-render/work-unit-async-storage.external'
 import type { BaseNextRequest, BaseNextResponse } from '../base-http'
-import type { IncomingHttpHeaders } from 'http'
+import type { LoaderTree } from '../lib/app-dir-module'
+import type { NextParsedUrlQuery } from '../request-meta'
+import type { AppPageModule } from '../route-modules/app-page/module'
+import type {
+  ActionResult,
+  CacheNodeSeedData,
+  DynamicParamTypesShort,
+  FlightData,
+  FlightDataPath,
+  FlightRouterState,
+  InitialRSCPayload,
+  PreloadCallbacks,
+  RSCPayload,
+  RenderOpts,
+  Segment,
+} from './types'
 
 import React, { type ErrorInfo, type JSX } from 'react'
 
-import RenderResult, {
-  type AppPageRenderResultMetadata,
-  type RenderResultOptions,
-} from '../render-result'
-import {
-  chainStreams,
-  renderToInitialFizzStream,
-  createDocumentClosingStream,
-  continueFizzStream,
-  continueDynamicPrerender,
-  continueStaticPrerender,
-  continueDynamicHTMLResume,
-  streamToBuffer,
-  streamToString,
-} from '../stream-utils/node-web-streams-helper'
-import { stripInternalQueries } from '../internal-utils'
+import { error, warn } from '../../build/output/log'
+import AppRouter from '../../client/components/app-router'
 import {
   NEXT_HMR_REFRESH_HEADER,
   NEXT_ROUTER_PREFETCH_HEADER,
-  NEXT_ROUTER_STATE_TREE_HEADER,
+  NEXT_ROUTER_SEGMENT_PREFETCH_HEADER,
   NEXT_ROUTER_STALE_TIME_HEADER,
+  NEXT_ROUTER_STATE_TREE_HEADER,
   NEXT_URL,
   RSC_HEADER,
-  NEXT_ROUTER_SEGMENT_PREFETCH_HEADER,
 } from '../../client/components/app-router-headers'
 import {
-  createTrackedMetadataContext,
-  createMetadataContext,
-} from '../../lib/metadata/metadata-context'
-import { createRequestStoreForRender } from '../async-storage/request-store'
-import { createWorkStore } from '../async-storage/work-store'
+  DynamicServerError,
+  isDynamicServerError,
+} from '../../client/components/hooks-server-context'
 import {
   getAccessFallbackErrorTypeByStatus,
   getAccessFallbackHTTPStatus,
   isHTTPAccessFallbackError,
 } from '../../client/components/http-access-fallback/http-access-fallback'
 import {
-  getURLFromRedirectError,
   getRedirectStatusCodeFromError,
+  getURLFromRedirectError,
 } from '../../client/components/redirect'
 import { isRedirectError } from '../../client/components/redirect-error'
-import { getImplicitTags } from '../lib/implicit-tags'
-import { AppRenderSpan, NextNodeServerSpan } from '../lib/trace/constants'
-import { getTracer } from '../lib/trace/tracer'
-import { FlightRenderResult } from './flight-render-result'
-import {
-  createFlightReactServerErrorHandler,
-  createHTMLReactServerErrorHandler,
-  createHTMLErrorHandler,
-  type DigestedError,
-  isUserLandError,
-  getDigestForWellKnownError,
-} from './create-error-handler'
-import {
-  getShortDynamicParamType,
-  dynamicParamTypes,
-} from './get-short-dynamic-param-type'
-import { getSegmentParam } from './get-segment-param'
-import { getScriptNonceFromHeader } from './get-script-nonce-from-header'
-import { parseAndValidateFlightRouterState } from './parse-and-validate-flight-router-state'
-import { createFlightRouterStateFromLoaderTree } from './create-flight-router-state-from-loader-tree'
-import { handleAction } from './action-handler'
-import { isBailoutToCSRError } from '../../shared/lib/lazy-dynamic/bailout-to-csr'
-import { warn, error } from '../../build/output/log'
-import { appendMutableCookies } from '../web/spec-extension/adapters/request-cookies'
-import { createServerInsertedHTML } from './server-inserted-html'
-import { getRequiredScripts } from './required-scripts'
-import { addPathPrefix } from '../../shared/lib/router/utils/add-path-prefix'
-import { makeGetServerInsertedHTML } from './make-get-server-inserted-html'
-import { walkTreeWithFlightRouterState } from './walk-tree-with-flight-router-state'
-import { createComponentTree } from './create-component-tree'
-import { getAssetQueryString } from './get-asset-query-string'
-import { setReferenceManifestsSingleton } from './encryption-utils'
-import {
-  DynamicState,
-  type PostponedState,
-  parsePostponedState,
-} from './postponed-state'
-import {
-  getDynamicDataPostponedState,
-  getDynamicHTMLPostponedState,
-  getPostponedFromState,
-} from './postponed-state'
-import { isDynamicServerError } from '../../client/components/hooks-server-context'
-import {
-  useFlightStream,
-  createInlinedDataReadableStream,
-} from './use-flight-response'
+import { createInitialRouterState } from '../../client/components/router-reducer/create-initial-router-state'
 import {
   StaticGenBailoutError,
   isStaticGenBailoutError,
 } from '../../client/components/static-generation-bailout'
 import { getStackWithoutErrorMessage } from '../../lib/format-server-error'
 import {
-  accessedDynamicData,
-  createPostponedAbortSignal,
-  formatDynamicAPIAccesses,
-  isPrerenderInterruptedError,
-  createDynamicTrackingState,
-  createDynamicValidationState,
-  getFirstDynamicReason,
-  trackAllowedDynamicAccess,
-  throwIfDisallowedDynamic,
-  consumeDynamicAccess,
-  type DynamicAccess,
-} from './dynamic-rendering'
+  createMetadataContext,
+  createTrackedMetadataContext,
+} from '../../lib/metadata/metadata-context'
+import { waitAtLeastOneReactRenderTask } from '../../lib/scheduler'
+import { InvariantError } from '../../shared/lib/invariant-error'
+import { isBailoutToCSRError } from '../../shared/lib/lazy-dynamic/bailout-to-csr'
+import { createMutableActionQueue } from '../../shared/lib/router/action-queue'
+import { addPathPrefix } from '../../shared/lib/router/utils/add-path-prefix'
+import { parseRelativeUrl } from '../../shared/lib/router/utils/parse-relative-url'
+import { parseParameter } from '../../shared/lib/router/utils/route-regex'
+import { PAGE_SEGMENT_KEY } from '../../shared/lib/segment'
+import { createRequestStoreForRender } from '../async-storage/request-store'
+import { createWorkStore } from '../async-storage/work-store'
+import { isBun, isNodeNextRequest } from '../base-http/helpers'
 import {
   getClientComponentLoaderMetrics,
   wrapClientComponentLoader,
 } from '../client-component-renderer-logger'
-import { createServerModuleMap } from './action-utils'
-import { isNodeNextRequest } from '../base-http/helpers'
-import { parseParameter } from '../../shared/lib/router/utils/route-regex'
-import { parseRelativeUrl } from '../../shared/lib/router/utils/parse-relative-url'
-import AppRouter from '../../client/components/app-router'
-import type { ServerComponentsHmrCache } from '../response-cache'
 import type { RequestErrorContext } from '../instrumentation/types'
-import { getServerActionRequestMetadata } from '../lib/server-action-request-meta'
-import { createInitialRouterState } from '../../client/components/router-reducer/create-initial-router-state'
-import { createMutableActionQueue } from '../../shared/lib/router/action-queue'
 import { getRevalidateReason } from '../instrumentation/utils'
-import { PAGE_SEGMENT_KEY } from '../../shared/lib/segment'
+import { stripInternalQueries } from '../internal-utils'
+import { getImplicitTags } from '../lib/implicit-tags'
+import { getServerActionRequestMetadata } from '../lib/server-action-request-meta'
+import { AppRenderSpan, NextNodeServerSpan } from '../lib/trace/constants'
+import { getTracer } from '../lib/trace/tracer'
+import { getTracedMetadata } from '../lib/trace/utils'
+import RenderResult, {
+  type AppPageRenderResultMetadata,
+  type RenderResultOptions,
+} from '../render-result'
 import type { FallbackRouteParams } from '../request/fallback-params'
-import { DynamicServerError } from '../../client/components/hooks-server-context'
-import { ServerPrerenderStreamResult } from './app-render-prerender-utils'
+import type { ServerComponentsHmrCache } from '../response-cache'
 import {
-  type ReactServerPrerenderResult,
+  chainStreams,
+  continueDynamicHTMLResume,
+  continueDynamicPrerender,
+  continueFizzStream,
+  continueStaticPrerender,
+  createDocumentClosingStream,
+  renderToInitialFizzStream,
+  streamToBuffer,
+  streamToString,
+} from '../stream-utils/node-web-streams-helper'
+import { appendMutableCookies } from '../web/spec-extension/adapters/request-cookies'
+import { handleAction } from './action-handler'
+import { createServerModuleMap } from './action-utils'
+import {
   ReactServerResult,
+  ServerPrerenderStreamResult,
   createReactServerPrerenderResult,
   createReactServerPrerenderResultFromRender,
   prerenderAndAbortInSequentialTasks,
-  prerenderServerWithPhases,
   prerenderClientWithPhases,
+  prerenderServerWithPhases,
+  type ReactServerPrerenderResult,
 } from './app-render-prerender-utils'
-import { printDebugThrownValueForProspectiveRender } from './prospective-render-utils'
 import { scheduleInSequentialTasks } from './app-render-render-utils'
-import { waitAtLeastOneReactRenderTask } from '../../lib/scheduler'
+import { CacheSignal } from './cache-signal'
+import { createComponentTree } from './create-component-tree'
+import {
+  createFlightReactServerErrorHandler,
+  createHTMLErrorHandler,
+  createHTMLReactServerErrorHandler,
+  getDigestForWellKnownError,
+  isUserLandError,
+  type DigestedError,
+} from './create-error-handler'
+import { createFlightRouterStateFromLoaderTree } from './create-flight-router-state-from-loader-tree'
+import {
+  accessedDynamicData,
+  consumeDynamicAccess,
+  createDynamicTrackingState,
+  createDynamicValidationState,
+  createPostponedAbortSignal,
+  formatDynamicAPIAccesses,
+  getFirstDynamicReason,
+  isPrerenderInterruptedError,
+  throwIfDisallowedDynamic,
+  trackAllowedDynamicAccess,
+  type DynamicAccess,
+} from './dynamic-rendering'
+import { setReferenceManifestsSingleton } from './encryption-utils'
+import { FlightRenderResult } from './flight-render-result'
+import { getAssetQueryString } from './get-asset-query-string'
+import { getScriptNonceFromHeader } from './get-script-nonce-from-header'
+import { getSegmentParam } from './get-segment-param'
+import {
+  dynamicParamTypes,
+  getShortDynamicParamType,
+} from './get-short-dynamic-param-type'
+import { makeGetServerInsertedHTML } from './make-get-server-inserted-html'
+import { parseAndValidateFlightRouterState } from './parse-and-validate-flight-router-state'
+import {
+  DynamicState,
+  getDynamicDataPostponedState,
+  getDynamicHTMLPostponedState,
+  getPostponedFromState,
+  parsePostponedState,
+  type PostponedState,
+} from './postponed-state'
+import { printDebugThrownValueForProspectiveRender } from './prospective-render-utils'
+import { getRequiredScripts } from './required-scripts'
+import { createServerInsertedHTML } from './server-inserted-html'
+import {
+  createInlinedDataReadableStream,
+  useFlightStream,
+} from './use-flight-response'
+import { walkTreeWithFlightRouterState } from './walk-tree-with-flight-router-state'
 import {
   workUnitAsyncStorage,
   type PrerenderStore,
 } from './work-unit-async-storage.external'
-import { CacheSignal } from './cache-signal'
-import { getTracedMetadata } from '../lib/trace/utils'
-import { InvariantError } from '../../shared/lib/invariant-error'
 
-import './clean-async-snapshot.external'
 import { INFINITE_CACHE } from '../../lib/constants'
-import { createComponentStylesAndScripts } from './create-component-styles-and-scripts'
-import { parseLoaderTree } from './parse-loader-tree'
+import type { MetadataErrorType } from '../../lib/metadata/resolve-metadata'
 import {
   createPrerenderResumeDataCache,
   createRenderResumeDataCache,
 } from '../resume-data-cache/resume-data-cache'
-import type { MetadataErrorType } from '../../lib/metadata/resolve-metadata'
+import './clean-async-snapshot.external'
+import { createComponentStylesAndScripts } from './create-component-styles-and-scripts'
+import { parseLoaderTree } from './parse-loader-tree'
 
 export type GetDynamicParamFromSegment = (
   // [slug] / [[slug]] / [...slug]
@@ -1155,7 +1155,8 @@ async function renderToHTMLOrFlightImpl(
     // The type check here ensures that `req` is correctly typed, and the
     // environment variable check provides dead code elimination.
     process.env.NEXT_RUNTIME !== 'edge' &&
-    isNodeNextRequest(req)
+    isNodeNextRequest(req) &&
+    !isBun
   ) {
     req.originalRequest.on('end', () => {
       requestEndedState.ended = true

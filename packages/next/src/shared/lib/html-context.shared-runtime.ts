@@ -1,8 +1,8 @@
+import type { NextFontManifest } from '../../build/webpack/plugins/next-font-manifest-plugin'
 import type { BuildManifest } from '../../server/get-page-files'
 import type { ServerRuntime } from '../../types'
-import type { NEXT_DATA } from './utils'
-import type { NextFontManifest } from '../../build/webpack/plugins/next-font-manifest-plugin'
 import type { DeepReadonly } from './deep-readonly'
+import type { NEXT_DATA } from './utils'
 
 import { createContext, useContext, type JSX } from 'react'
 
@@ -44,7 +44,7 @@ export type HtmlProps = {
   head?: Array<JSX.Element | null>
   crossOrigin?: 'anonymous' | 'use-credentials' | '' | undefined
   optimizeCss?: any
-  nextConfigOutput?: 'standalone' | 'export'
+  nextConfigOutput?: 'standalone' | 'export' | 'bun'
   nextScriptWorkers?: boolean
   runtime?: ServerRuntime
   hasConcurrentFeatures?: boolean

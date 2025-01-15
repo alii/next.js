@@ -1,25 +1,25 @@
-import type { LoadComponentsReturnType } from '../load-components'
-import type { ServerRuntime, SizeLimit } from '../../types'
-import type { NextConfigComplete } from '../../server/config-shared'
+import type { ParsedUrlQuery } from 'querystring'
 import type { ClientReferenceManifest } from '../../build/webpack/plugins/flight-manifest-plugin'
 import type { NextFontManifest } from '../../build/webpack/plugins/next-font-manifest-plugin'
-import type { ParsedUrlQuery } from 'querystring'
-import type { AppPageModule } from '../route-modules/app-page/module'
-import type { ExpireTime } from '../lib/revalidate'
+import type { NextConfigComplete } from '../../server/config-shared'
 import type {
   HeadData,
   LoadingModuleData,
 } from '../../shared/lib/app-router-context.shared-runtime'
 import type { DeepReadonly } from '../../shared/lib/deep-readonly'
+import type { ServerRuntime, SizeLimit } from '../../types'
 import type { __ApiPreviewProps } from '../api-utils'
+import type { ExpireTime } from '../lib/revalidate'
+import type { LoadComponentsReturnType } from '../load-components'
+import type { AppPageModule } from '../route-modules/app-page/module'
 
+import type { IncomingMessage } from 'http'
 import s from 'next/dist/compiled/superstruct'
+import type { BaseNextRequest } from '../base-http'
 import type { RequestLifecycleOpts } from '../base-server'
 import type { InstrumentationOnRequestError } from '../instrumentation/types'
-import type { NextRequestHint } from '../web/adapter'
-import type { BaseNextRequest } from '../base-http'
-import type { IncomingMessage } from 'http'
 import type { RenderResumeDataCache } from '../resume-data-cache/resume-data-cache'
+import type { NextRequestHint } from '../web/adapter'
 
 export type DynamicParamTypes =
   | 'catchall'
@@ -185,7 +185,7 @@ export interface RenderOptsPartial {
   setAppIsrStatus?: (key: string, value: boolean | null) => void
   isRevalidate?: boolean
   nextExport?: boolean
-  nextConfigOutput?: 'standalone' | 'export'
+  nextConfigOutput?: 'standalone' | 'export' | 'bun'
   onInstrumentationRequestError?: ServerOnInstrumentationRequestError
   isDraftMode?: boolean
   deploymentId?: string

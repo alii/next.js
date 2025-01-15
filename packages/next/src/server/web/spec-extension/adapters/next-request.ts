@@ -1,12 +1,12 @@
+import type { Writable } from 'node:stream'
 import type { BaseNextRequest } from '../../../base-http'
 import type { NodeNextRequest } from '../../../base-http/node'
 import type { WebNextRequest } from '../../../base-http/web'
-import type { Writable } from 'node:stream'
 
+import { isNodeNextRequest, isWebNextRequest } from '../../../base-http/helpers'
 import { getRequestMeta } from '../../../request-meta'
 import { fromNodeOutgoingHttpHeaders } from '../../utils'
 import { NextRequest } from '../request'
-import { isNodeNextRequest, isWebNextRequest } from '../../../base-http/helpers'
 
 export const ResponseAbortedName = 'ResponseAborted'
 export class ResponseAborted extends Error {

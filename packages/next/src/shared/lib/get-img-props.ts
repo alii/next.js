@@ -1,11 +1,11 @@
-import { warnOnce } from './utils/warn-once'
 import { getImageBlurSvg } from './image-blur-svg'
-import { imageConfigDefault } from './image-config'
 import type {
   ImageConfigComplete,
   ImageLoaderProps,
   ImageLoaderPropsWithConfig,
 } from './image-config'
+import { imageConfigDefault } from './image-config'
+import { warnOnce } from './utils/warn-once'
 
 import type { JSX } from 'react'
 
@@ -83,7 +83,7 @@ const VALID_LOADING_VALUES = ['lazy', 'eager', undefined] as const
 type LoadingValue = (typeof VALID_LOADING_VALUES)[number]
 type ImageConfig = ImageConfigComplete & {
   allSizes: number[]
-  output?: 'standalone' | 'export'
+  output?: 'standalone' | 'export' | 'bun'
 }
 
 export type ImageLoader = (p: ImageLoaderProps) => string

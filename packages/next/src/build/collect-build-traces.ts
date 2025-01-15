@@ -1,24 +1,24 @@
-import { Span } from '../trace'
 import type { NextConfigComplete } from '../server/config-shared'
+import { Span } from '../trace'
 
 import {
+  getFilesMapFromReasons,
   TRACE_IGNORES,
   type BuildTraceContext,
-  getFilesMapFromReasons,
 } from './webpack/plugins/next-trace-entrypoints-plugin'
 
-import path from 'path'
+import type { NodeFileTraceReasons } from '@vercel/nft'
 import fs from 'fs/promises'
-import { nonNullable } from '../lib/non-nullable'
-import * as ciEnvironment from '../server/ci-info'
+import { nodeFileTrace } from 'next/dist/compiled/@vercel/nft'
 import debugOriginal from 'next/dist/compiled/debug'
 import picomatch from 'next/dist/compiled/picomatch'
+import path from 'path'
+import isError from '../lib/is-error'
+import { nonNullable } from '../lib/non-nullable'
+import * as ciEnvironment from '../server/ci-info'
 import { defaultOverrides } from '../server/require-hook'
-import { nodeFileTrace } from 'next/dist/compiled/@vercel/nft'
 import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
 import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
-import isError from '../lib/is-error'
-import type { NodeFileTraceReasons } from '@vercel/nft'
 import type { RoutesUsingEdgeRuntime } from './utils'
 
 const debug = debugOriginal('next:build:build-traces')
@@ -119,7 +119,13 @@ export async function collectBuildTraces({
 
       // Under standalone mode, we need to trace the extra IPC server and
       // worker files.
-      const isStandalone = config.output === 'standalone'
+      /**
+       * If the output is normal standalone or bun, we consider it standalone.
+       * Bun output is MOSTLY standalone output
+       */
+      const isConsideredStandalone =
+        config.output === 'standalone' || config.output === 'bun'
+
       const sharedEntriesSet = Object.keys(defaultOverrides).map((value) =>
         require.resolve(value, {
           paths: [require.resolve('next/dist/server/require-hook')],
@@ -157,7 +163,7 @@ export async function collectBuildTraces({
 
       const serverEntries = [
         ...sharedEntriesSet,
-        ...(isStandalone
+        ...(isConsideredStandalone
           ? [
               require.resolve('next/dist/server/lib/start-server'),
               require.resolve('next/dist/server/next'),
@@ -200,7 +206,9 @@ export async function collectBuildTraces({
 
       const sharedIgnores = [
         '**/next/dist/compiled/next-server/**/*.dev.js',
-        ...(isStandalone ? [] : ['**/next/dist/compiled/jest-worker/**/*']),
+        ...(isConsideredStandalone
+          ? []
+          : ['**/next/dist/compiled/jest-worker/**/*']),
         '**/next/dist/compiled/webpack/(bundle4|bundle5).js',
         '**/node_modules/webpack5/**/*',
         '**/next/dist/server/lib/route-resolver*',
@@ -218,7 +226,7 @@ export async function collectBuildTraces({
           ? ['**/next/dist/compiled/@ampproject/toolbox-optimizer/**/*']
           : []),
 
-        ...(isStandalone ? [] : TRACE_IGNORES),
+        ...(isConsideredStandalone ? [] : TRACE_IGNORES),
         ...additionalIgnores,
       ]
 
@@ -265,7 +273,7 @@ export async function collectBuildTraces({
         )
       }
 
-      if (isStandalone) {
+      if (isConsideredStandalone) {
         addToTracedFiles(
           '',
           require.resolve('next/dist/compiled/jest-worker/processChild'),

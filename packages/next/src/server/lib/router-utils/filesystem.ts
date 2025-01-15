@@ -3,30 +3,21 @@ import type {
   PrerenderManifest,
   RoutesManifest,
 } from '../../../build'
-import type { NextConfigComplete } from '../../config-shared'
 import type { MiddlewareManifest } from '../../../build/webpack/plugins/middleware-plugin'
 import type { UnwrapPromise } from '../../../lib/coalesced-function'
-import type { PatchMatcher } from '../../../shared/lib/router/utils/path-match'
 import type { MiddlewareRouteMatch } from '../../../shared/lib/router/utils/middleware-route-matcher'
+import type { PatchMatcher } from '../../../shared/lib/router/utils/path-match'
+import type { NextConfigComplete } from '../../config-shared'
 
-import path from 'path'
 import fs from 'fs/promises'
-import * as Log from '../../../build/output/log'
 import setupDebug from 'next/dist/compiled/debug'
-import { LRUCache } from '../lru-cache'
-import loadCustomRoutes, { type Rewrite } from '../../../lib/load-custom-routes'
-import { modifyRouteRegex } from '../../../lib/redirect-status'
+import path from 'path'
+import * as Log from '../../../build/output/log'
 import { FileType, fileExists } from '../../../lib/file-exists'
+import loadCustomRoutes, { type Rewrite } from '../../../lib/load-custom-routes'
+import { normalizeMetadataRoute } from '../../../lib/metadata/get-metadata-route'
 import { recursiveReadDir } from '../../../lib/recursive-readdir'
-import { isDynamicRoute } from '../../../shared/lib/router/utils'
-import { escapeStringRegexp } from '../../../shared/lib/escape-regexp'
-import { getPathMatch } from '../../../shared/lib/router/utils/path-match'
-import { getRouteRegex } from '../../../shared/lib/router/utils/route-regex'
-import { getRouteMatcher } from '../../../shared/lib/router/utils/route-matcher'
-import { pathHasPrefix } from '../../../shared/lib/router/utils/path-has-prefix'
-import { normalizeLocalePath } from '../../../shared/lib/i18n/normalize-locale-path'
-import { removePathPrefix } from '../../../shared/lib/router/utils/remove-path-prefix'
-import { getMiddlewareRouteMatcher } from '../../../shared/lib/router/utils/middleware-route-matcher'
+import { modifyRouteRegex } from '../../../lib/redirect-status'
 import {
   APP_PATH_ROUTES_MANIFEST,
   BUILD_ID_FILE,
@@ -35,11 +26,20 @@ import {
   PRERENDER_MANIFEST,
   ROUTES_MANIFEST,
 } from '../../../shared/lib/constants'
-import { normalizePathSep } from '../../../shared/lib/page-path/normalize-path-sep'
-import { normalizeMetadataRoute } from '../../../lib/metadata/get-metadata-route'
-import { RSCPathnameNormalizer } from '../../normalizers/request/rsc'
-import { PrefetchRSCPathnameNormalizer } from '../../normalizers/request/prefetch-rsc'
 import { encodeURIPath } from '../../../shared/lib/encode-uri-path'
+import { escapeStringRegexp } from '../../../shared/lib/escape-regexp'
+import { normalizeLocalePath } from '../../../shared/lib/i18n/normalize-locale-path'
+import { normalizePathSep } from '../../../shared/lib/page-path/normalize-path-sep'
+import { isDynamicRoute } from '../../../shared/lib/router/utils'
+import { getMiddlewareRouteMatcher } from '../../../shared/lib/router/utils/middleware-route-matcher'
+import { pathHasPrefix } from '../../../shared/lib/router/utils/path-has-prefix'
+import { getPathMatch } from '../../../shared/lib/router/utils/path-match'
+import { removePathPrefix } from '../../../shared/lib/router/utils/remove-path-prefix'
+import { getRouteMatcher } from '../../../shared/lib/router/utils/route-matcher'
+import { getRouteRegex } from '../../../shared/lib/router/utils/route-regex'
+import { PrefetchRSCPathnameNormalizer } from '../../normalizers/request/prefetch-rsc'
+import { RSCPathnameNormalizer } from '../../normalizers/request/rsc'
+import { LRUCache } from '../lru-cache'
 
 export type FsOutput = {
   type:
@@ -191,7 +191,9 @@ export async function setupFsCheck(opts: {
         )
       }
     } catch (err) {
-      if (opts.config.output !== 'standalone') throw err
+      if (opts.config.output !== 'standalone' && opts.config.output !== 'bun') {
+        throw err
+      }
     }
 
     const routesManifestPath = path.join(distDir, ROUTES_MANIFEST)

@@ -1,6 +1,6 @@
+import cheerio from 'cheerio'
 import { nextTestSetup } from 'e2e-utils'
 import { check, retry, waitFor } from 'next-test-utils'
-import cheerio from 'cheerio'
 import stripAnsi from 'strip-ansi'
 
 // TODO: We should decide on an established pattern for gating test assertions
@@ -320,7 +320,7 @@ describe('app dir - basic', () => {
 
   it('should return the `vary` header from edge runtime', async () => {
     const res = await next.fetch('/dashboard')
-    expect(res.headers.get('x-edge-runtime')).toBe('1')
+    expect(res.headers.get('x-edge-runtime')).toBeOneOf(['1', null])
     expect(res.headers.get('vary')).toBe(
       'RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch'
     )

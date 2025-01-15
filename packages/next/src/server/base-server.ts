@@ -1,136 +1,78 @@
-import type { __ApiPreviewProps } from './api-utils'
-import type { LoadComponentsReturnType } from './load-components'
-import type { MiddlewareRouteMatch } from '../shared/lib/router/utils/middleware-route-matcher'
-import type { Params } from './request/params'
-import {
-  type FallbackRouteParams,
-  getFallbackRouteParams,
-} from './request/fallback-params'
-import type { NextConfig, NextConfigComplete } from './config-shared'
 import type {
-  NextParsedUrlQuery,
-  NextUrlWithParsedQuery,
-  RequestMeta,
-} from './request-meta'
+  Server as HTTPServer,
+  ServerResponse as HTTPServerResponse,
+  IncomingMessage,
+} from 'http'
 import type { ParsedUrlQuery } from 'querystring'
-import type { RenderOptsPartial as PagesRenderOptsPartial } from './render'
-import type {
-  RenderOptsPartial as AppRenderOptsPartial,
-  ServerOnInstrumentationRequestError,
-} from './app-render/types'
-import {
-  type CachedAppPageValue,
-  type CachedPageValue,
-  type ServerComponentsHmrCache,
-  type ResponseCacheBase,
-  type ResponseCacheEntry,
-  type ResponseGenerator,
-  CachedRouteKind,
-  type CachedRedirectValue,
-} from './response-cache'
+import type { TLSSocket } from 'tls'
 import type { UrlWithParsedQuery } from 'url'
-import {
-  NormalizeError,
-  DecodeError,
-  normalizeRepeatedSlashes,
-  MissingStaticPage,
-} from '../shared/lib/utils'
-import type { PreviewData } from '../types'
-import type { PagesManifest } from '../build/webpack/plugins/pages-manifest-plugin'
-import type { BaseNextRequest, BaseNextResponse } from './base-http'
 import type {
   ManifestRewriteRoute,
   ManifestRoute,
   PrerenderManifest,
 } from '../build'
+import type { MiddlewareMatcher } from '../build/analysis/get-page-static-info'
 import type { ClientReferenceManifest } from '../build/webpack/plugins/flight-manifest-plugin'
 import type { NextFontManifest } from '../build/webpack/plugins/next-font-manifest-plugin'
+import type { PagesManifest } from '../build/webpack/plugins/pages-manifest-plugin'
+import type { MiddlewareRouteMatch } from '../shared/lib/router/utils/middleware-route-matcher'
+import {
+  DecodeError,
+  MissingStaticPage,
+  NormalizeError,
+  normalizeRepeatedSlashes,
+} from '../shared/lib/utils'
+import type { PreviewData } from '../types'
+import type { __ApiPreviewProps } from './api-utils'
+import type {
+  RenderOptsPartial as AppRenderOptsPartial,
+  ServerOnInstrumentationRequestError,
+} from './app-render/types'
+import type { BaseNextRequest, BaseNextResponse } from './base-http'
+import type { NextConfig, NextConfigComplete } from './config-shared'
+import type { InstrumentationModule } from './instrumentation/types'
+import type { LoadComponentsReturnType } from './load-components'
+import type { PathnameNormalizer } from './normalizers/request/pathname-normalizer'
+import type { RenderOptsPartial as PagesRenderOptsPartial } from './render'
+import type {
+  NextParsedUrlQuery,
+  NextUrlWithParsedQuery,
+  RequestMeta,
+} from './request-meta'
+import {
+  getFallbackRouteParams,
+  type FallbackRouteParams,
+} from './request/fallback-params'
+import type { Params } from './request/params'
+import {
+  CachedRouteKind,
+  type CachedAppPageValue,
+  type CachedPageValue,
+  type CachedRedirectValue,
+  type ResponseCacheBase,
+  type ResponseCacheEntry,
+  type ResponseGenerator,
+  type ServerComponentsHmrCache,
+} from './response-cache'
+import type { PagesAPIRouteMatch } from './route-matches/pages-api-route-match'
 import type {
   AppPageRouteHandlerContext,
   AppPageRouteModule,
 } from './route-modules/app-page/module'
-import type { PagesAPIRouteMatch } from './route-matches/pages-api-route-match'
 import type { AppRouteRouteHandlerContext } from './route-modules/app-route/module'
-import type {
-  Server as HTTPServer,
-  IncomingMessage,
-  ServerResponse as HTTPServerResponse,
-} from 'http'
-import type { MiddlewareMatcher } from '../build/analysis/get-page-static-info'
-import type { TLSSocket } from 'tls'
-import type { PathnameNormalizer } from './normalizers/request/pathname-normalizer'
-import type { InstrumentationModule } from './instrumentation/types'
 
 import { format as formatUrl, parse as parseUrl } from 'url'
-import { formatHostname } from './lib/format-hostname'
-import { getRedirectStatus } from '../lib/redirect-status'
-import { isEdgeRuntime } from '../lib/is-edge-runtime'
-import {
-  APP_PATHS_MANIFEST,
-  NEXT_BUILTIN_DOCUMENT,
-  PAGES_MANIFEST,
-  STATIC_STATUS_PAGES,
-  UNDERSCORE_NOT_FOUND_ROUTE,
-  UNDERSCORE_NOT_FOUND_ROUTE_ENTRY,
-} from '../shared/lib/constants'
-import { isDynamicRoute } from '../shared/lib/router/utils'
-import { checkIsOnDemandRevalidate } from './api-utils'
-import { setConfig } from '../shared/lib/runtime-config.external'
-import {
-  formatRevalidate,
-  type Revalidate,
-  type ExpireTime,
-} from './lib/revalidate'
-import { execOnce } from '../shared/lib/utils'
-import { isBlockedPage } from './utils'
-import { isBot, isHtmlLimitedBotUA } from '../shared/lib/router/utils/is-bot'
-import RenderResult from './render-result'
-import { removeTrailingSlash } from '../shared/lib/router/utils/remove-trailing-slash'
-import { denormalizePagePath } from '../shared/lib/page-path/denormalize-page-path'
 import * as Log from '../build/output/log'
-import { getUtils } from './server-utils'
-import isError, { getProperError } from '../lib/is-error'
 import {
-  addRequestMeta,
-  getRequestMeta,
-  removeRequestMeta,
-  setRequestMeta,
-} from './request-meta'
-import { removePathPrefix } from '../shared/lib/router/utils/remove-path-prefix'
-import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
-import { getHostname } from '../shared/lib/get-hostname'
-import { parseUrl as parseUrlUtil } from '../shared/lib/router/utils/parse-url'
-import { getNextPathnameInfo } from '../shared/lib/router/utils/get-next-pathname-info'
-import {
-  RSC_HEADER,
-  NEXT_RSC_UNION_QUERY,
+  NEXT_DID_POSTPONE_HEADER,
+  NEXT_IS_PRERENDER_HEADER,
   NEXT_ROUTER_PREFETCH_HEADER,
   NEXT_ROUTER_SEGMENT_PREFETCH_HEADER,
-  NEXT_DID_POSTPONE_HEADER,
-  NEXT_URL,
   NEXT_ROUTER_STATE_TREE_HEADER,
-  NEXT_IS_PRERENDER_HEADER,
+  NEXT_RSC_UNION_QUERY,
+  NEXT_URL,
+  RSC_HEADER,
 } from '../client/components/app-router-headers'
-import type {
-  MatchOptions,
-  RouteMatcherManager,
-} from './route-matcher-managers/route-matcher-manager'
-import { LocaleRouteNormalizer } from './normalizers/locale-route-normalizer'
-import { DefaultRouteMatcherManager } from './route-matcher-managers/default-route-matcher-manager'
-import { AppPageRouteMatcherProvider } from './route-matcher-providers/app-page-route-matcher-provider'
-import { AppRouteRouteMatcherProvider } from './route-matcher-providers/app-route-route-matcher-provider'
-import { PagesAPIRouteMatcherProvider } from './route-matcher-providers/pages-api-route-matcher-provider'
-import { PagesRouteMatcherProvider } from './route-matcher-providers/pages-route-matcher-provider'
-import { ServerManifestLoader } from './route-matcher-providers/helpers/manifest-loaders/server-manifest-loader'
-import { getTracer, isBubbledError, SpanKind } from './lib/trace/tracer'
-import { BaseServerSpan } from './lib/trace/constants'
-import { I18NProvider } from './lib/i18n-provider'
-import { sendResponse } from './send-response'
-import {
-  fromNodeOutgoingHttpHeaders,
-  normalizeNextQueryParam,
-  toNodeOutgoingHttpHeaders,
-} from './web/utils'
 import {
   CACHE_ONE_YEAR,
   INFINITE_CACHE,
@@ -139,42 +81,101 @@ import {
   NEXT_CACHE_TAGS_HEADER,
   NEXT_RESUME_HEADER,
 } from '../lib/constants'
-import { normalizeLocalePath } from '../shared/lib/i18n/normalize-locale-path'
+import { FallbackMode, parseFallbackField } from '../lib/fallback'
+import { isEdgeRuntime } from '../lib/is-edge-runtime'
+import isError, { getProperError } from '../lib/is-error'
+import { getRedirectStatus } from '../lib/redirect-status'
+import { scheduleOnNextTick } from '../lib/scheduler'
 import {
-  NextRequestAdapter,
-  signalFromNodeResponse,
-} from './web/spec-extension/adapters/next-request'
-import { matchNextDataPathname } from './lib/match-next-data-pathname'
+  APP_PATHS_MANIFEST,
+  NEXT_BUILTIN_DOCUMENT,
+  PAGES_MANIFEST,
+  STATIC_STATUS_PAGES,
+  UNDERSCORE_NOT_FOUND_ROUTE,
+  UNDERSCORE_NOT_FOUND_ROUTE_ENTRY,
+} from '../shared/lib/constants'
+import type { DeepReadonly } from '../shared/lib/deep-readonly'
+import { getHostname } from '../shared/lib/get-hostname'
+import { normalizeLocalePath } from '../shared/lib/i18n/normalize-locale-path'
+import { denormalizePagePath } from '../shared/lib/page-path/denormalize-page-path'
+import { isDynamicRoute } from '../shared/lib/router/utils'
+import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
+import { getNextPathnameInfo } from '../shared/lib/router/utils/get-next-pathname-info'
 import getRouteFromAssetPath from '../shared/lib/router/utils/get-route-from-asset-path'
-import { decodePathParams } from './lib/router-utils/decode-path-params'
-import { RSCPathnameNormalizer } from './normalizers/request/rsc'
+import { isBot, isHtmlLimitedBotUA } from '../shared/lib/router/utils/is-bot'
+import { parseUrl as parseUrlUtil } from '../shared/lib/router/utils/parse-url'
+import { removePathPrefix } from '../shared/lib/router/utils/remove-path-prefix'
+import { removeTrailingSlash } from '../shared/lib/router/utils/remove-trailing-slash'
+import { setConfig } from '../shared/lib/runtime-config.external'
+import { execOnce } from '../shared/lib/utils'
+import {
+  getBuiltinRequestContext,
+  type WaitUntil,
+} from './after/builtin-request-context'
+import { checkIsOnDemandRevalidate } from './api-utils'
 import { stripFlightHeaders } from './app-render/strip-flight-headers'
+import { isNodeNextRequest, isNodeNextResponse } from './base-http/helpers'
+import { getRevalidateReason } from './instrumentation/utils'
+import { checkIsAppPPREnabled } from './lib/experimental/ppr'
+import { formatHostname } from './lib/format-hostname'
+import { I18NProvider } from './lib/i18n-provider'
+import { isInterceptionRouteAppPath } from './lib/interception-routes'
+import { matchNextDataPathname } from './lib/match-next-data-pathname'
+import { patchSetHeaderWithCookieSupport } from './lib/patch-set-header'
+import {
+  formatRevalidate,
+  type ExpireTime,
+  type Revalidate,
+} from './lib/revalidate'
+import { decodePathParams } from './lib/router-utils/decode-path-params'
+import { getIsServerAction } from './lib/server-action-request-meta'
+import { toRoute } from './lib/to-route'
+import { BaseServerSpan } from './lib/trace/constants'
+import { getTracer, isBubbledError, SpanKind } from './lib/trace/tracer'
+import { LocaleRouteNormalizer } from './normalizers/locale-route-normalizer'
+import { NextDataPathnameNormalizer } from './normalizers/request/next-data'
+import { PrefetchRSCPathnameNormalizer } from './normalizers/request/prefetch-rsc'
+import { RSCPathnameNormalizer } from './normalizers/request/rsc'
+import RenderResult from './render-result'
+import {
+  addRequestMeta,
+  getRequestMeta,
+  removeRequestMeta,
+  setRequestMeta,
+} from './request-meta'
+import { toResponseCacheEntry } from './response-cache/utils'
+import { RouteKind } from './route-kind'
+import { DefaultRouteMatcherManager } from './route-matcher-managers/default-route-matcher-manager'
+import type {
+  MatchOptions,
+  RouteMatcherManager,
+} from './route-matcher-managers/route-matcher-manager'
+import { AppPageRouteMatcherProvider } from './route-matcher-providers/app-page-route-matcher-provider'
+import { AppRouteRouteMatcherProvider } from './route-matcher-providers/app-route-route-matcher-provider'
+import { ServerManifestLoader } from './route-matcher-providers/helpers/manifest-loaders/server-manifest-loader'
+import { PagesAPIRouteMatcherProvider } from './route-matcher-providers/pages-api-route-matcher-provider'
+import { PagesRouteMatcherProvider } from './route-matcher-providers/pages-route-matcher-provider'
 import {
   isAppPageRouteModule,
   isAppRouteRouteModule,
   isPagesRouteModule,
 } from './route-modules/checks'
-import { PrefetchRSCPathnameNormalizer } from './normalizers/request/prefetch-rsc'
-import { NextDataPathnameNormalizer } from './normalizers/request/next-data'
-import { getIsServerAction } from './lib/server-action-request-meta'
-import { isInterceptionRouteAppPath } from './lib/interception-routes'
-import { toRoute } from './lib/to-route'
-import type { DeepReadonly } from '../shared/lib/deep-readonly'
-import { isNodeNextRequest, isNodeNextResponse } from './base-http/helpers'
-import { patchSetHeaderWithCookieSupport } from './lib/patch-set-header'
-import { checkIsAppPPREnabled } from './lib/experimental/ppr'
-import {
-  getBuiltinRequestContext,
-  type WaitUntil,
-} from './after/builtin-request-context'
-import { ENCODED_TAGS } from './stream-utils/encodedTags'
-import { NextRequestHint } from './web/adapter'
-import { getRevalidateReason } from './instrumentation/utils'
-import { RouteKind } from './route-kind'
 import type { RouteModule } from './route-modules/route-module'
-import { FallbackMode, parseFallbackField } from '../lib/fallback'
-import { toResponseCacheEntry } from './response-cache/utils'
-import { scheduleOnNextTick } from '../lib/scheduler'
+import { sendResponse } from './send-response'
+import { getUtils } from './server-utils'
+import { ENCODED_TAGS } from './stream-utils/encodedTags'
+import { isBlockedPage } from './utils'
+import { NextRequestHint } from './web/adapter'
+import type { NextRequest } from './web/exports'
+import {
+  NextRequestAdapter,
+  signalFromNodeResponse,
+} from './web/spec-extension/adapters/next-request'
+import {
+  fromNodeOutgoingHttpHeaders,
+  normalizeNextQueryParam,
+  toNodeOutgoingHttpHeaders,
+} from './web/utils'
 
 export type FindComponentsResult = {
   components: LoadComponentsReturnType
@@ -2386,6 +2387,7 @@ export default abstract class Server<
         // make sure to only add query values from original URL
         query: origQuery,
       })
+
       const renderOpts: LoadedRenderOpts = {
         ...components,
         ...opts,
@@ -2486,10 +2488,13 @@ export default abstract class Server<
           }
 
           try {
-            const request = NextRequestAdapter.fromNodeNextRequest(
-              req,
-              signalFromNodeResponse(res.originalResponse)
-            )
+            const request =
+              'toNextRequest' in req
+                ? (req as { toNextRequest(): NextRequest }).toNextRequest()
+                : NextRequestAdapter.fromNodeNextRequest(
+                    req,
+                    signalFromNodeResponse(res.originalResponse)
+                  )
 
             const response = await routeModule.handle(request, context)
 
@@ -3631,6 +3636,7 @@ export default abstract class Server<
       // Ensuring for loading page component routes is done via the matcher.
       shouldEnsure: false,
     })
+
     if (result) {
       getTracer().setRootSpanAttribute('next.route', pathname)
       try {

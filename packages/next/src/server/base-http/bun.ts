@@ -1,91 +1,102 @@
-import type { IncomingHttpHeaders, OutgoingHttpHeaders } from 'http'
-import type { FetchMetrics } from './index'
-
+import type { OutgoingHttpHeaders } from 'node:http'
 import { DetachedPromise } from '../../lib/detached-promise'
-import { InvariantError } from '../../shared/lib/invariant-error'
-import type { NextRequestHint } from '../web/adapter'
+import { NextRequest } from '../web/exports'
 import { toNodeOutgoingHttpHeaders } from '../web/utils'
 import { CloseController, trackBodyConsumed } from '../web/web-on-close'
-import { BaseNextRequest, BaseNextResponse } from './index'
+import { BaseNextRequest, BaseNextResponse, type FetchMetric } from './index'
 
-export class WebNextRequest extends BaseNextRequest<ReadableStream | null> {
-  public request: Request
-  public headers: IncomingHttpHeaders
-  public fetchMetrics: FetchMetrics | undefined
+export class BunNextRequest extends BaseNextRequest<ReadableStream<Uint8Array> | null> {
+  private readonly request: Request
 
-  constructor(request: NextRequestHint) {
-    const url = new URL(request.url)
+  public fetchMetrics: FetchMetric[] | undefined
 
-    super(
-      request.method,
-      url.href.slice(url.origin.length),
-      request.clone().body
-    )
+  constructor(url: URL, request: Request) {
+    super(request.method, request.url, request.body)
     this.request = request
-    this.fetchMetrics = request.fetchMetrics
-
-    this.headers = {}
-    for (const [name, value] of request.headers.entries()) {
-      this.headers[name] = value
-    }
+    this.url = url.pathname
   }
 
-  async parseBody(_limit: string | number): Promise<any> {
-    throw new Error('parseBody is not implemented in the web runtime')
+  public get headers() {
+    return Object.fromEntries([...this.request.headers.entries()])
+  }
+
+  public toNextRequest(): NextRequest {
+    return new NextRequest(this.request)
   }
 }
 
-export class WebNextResponse extends BaseNextResponse<WritableStream> {
+export class BunNextResponse extends BaseNextResponse<WritableStream> {
   private headers = new Headers()
   private textBody: string | undefined = undefined
 
-  private closeController = new CloseController()
+  // Hack because Next.js uses `.originalResponse` to patch res.setHeader support when it thinks we are using Node.js
+  // because the check for Node.js is actually terrible and doesn't actually check the response is a Node.js response at all
+  get originalResponse() {
+    return this
+  }
+
+  private readonly closeController = new CloseController()
 
   public statusCode: number | undefined
   public statusMessage: string | undefined
 
-  constructor(public transformStream = new TransformStream()) {
+  private readonly transformStream: TransformStream
+
+  public constructor() {
+    const transformStream = new TransformStream()
+
     super(transformStream.writable)
+    this.transformStream = transformStream
   }
 
-  setHeader(name: string, value: string | string[]): this {
+  public get writable() {
+    return this.transformStream.writable
+  }
+
+  public get readable() {
+    return this.transformStream.readable
+  }
+
+  public setHeader(name: string, value: string | string[]): this {
     this.headers.delete(name)
+
     for (const val of Array.isArray(value) ? value : [value]) {
       this.headers.append(name, val)
     }
+
     return this
   }
 
-  removeHeader(name: string): this {
+  public removeHeader(name: string): this {
     this.headers.delete(name)
     return this
   }
 
-  getHeaderValues(name: string): string[] | undefined {
+  public getHeaderValues(name: string): string[] | undefined {
     // https://developer.mozilla.org/docs/Web/API/Headers/get#example
     return this.getHeader(name)
       ?.split(',')
       .map((v) => v.trimStart())
   }
 
-  getHeader(name: string): string | undefined {
+  public getHeader(name: string): string | undefined {
     return this.headers.get(name) ?? undefined
   }
 
-  getHeaders(): OutgoingHttpHeaders {
+  public getHeaders(): OutgoingHttpHeaders {
     return toNodeOutgoingHttpHeaders(this.headers)
   }
 
-  hasHeader(name: string): boolean {
+  public hasHeader(name: string): boolean {
     return this.headers.has(name)
   }
 
-  appendHeader(name: string, value: string): this {
+  public appendHeader(name: string, value: string): this {
     this.headers.append(name, value)
     return this
   }
 
-  body(value: string) {
+  public body(value: string) {
     this.textBody = value
     return this
   }
@@ -112,9 +123,8 @@ export class WebNextResponse extends BaseNextResponse<WritableStream> {
 
     // if the response is streaming, onClose() can still be called after this point.
     const canAddListenersLater = typeof bodyInit !== 'string'
-    const shouldTrackBody = canAddListenersLater
-      ? true
-      : this.closeController.listeners > 0
+    const shouldTrackBody =
+      canAddListenersLater || this.closeController.listeners > 0
 
     if (shouldTrackBody) {
       bodyInit = trackBodyConsumed(body, () => {
@@ -131,10 +141,11 @@ export class WebNextResponse extends BaseNextResponse<WritableStream> {
 
   public onClose(callback: () => void) {
     if (this.closeController.isClosed) {
-      throw new InvariantError(
+      throw new Error(
         'Cannot call onClose on a WebNextResponse that is already closed'
       )
     }
+
     return this.closeController.onClose(callback)
   }
 }

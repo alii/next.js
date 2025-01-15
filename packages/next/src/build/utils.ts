@@ -1,82 +1,82 @@
-import type { NextConfig, NextConfigComplete } from '../server/config-shared'
-import type { ExperimentalPPRConfig } from '../server/lib/experimental/ppr'
-import type { AppBuildManifest } from './webpack/plugins/app-build-manifest-plugin'
-import type { AssetBinding } from './webpack/loaders/get-module-build-info'
-import type { PageConfig, ServerRuntime } from '../types'
-import type { BuildManifest } from '../server/get-page-files'
+import type { WebpackLayerName } from '../lib/constants'
 import type {
+  CustomRoutes,
+  Header,
   Redirect,
   Rewrite,
-  Header,
-  CustomRoutes,
 } from '../lib/load-custom-routes'
+import type { NextConfig, NextConfigComplete } from '../server/config-shared'
+import type { BuildManifest } from '../server/get-page-files'
+import type { ExperimentalPPRConfig } from '../server/lib/experimental/ppr'
+import type { AppPageModule } from '../server/route-modules/app-page/module'
+import type { RouteModule } from '../server/route-modules/route-module'
+import type { NextComponentType } from '../shared/lib/utils'
+import type { PageConfig, ServerRuntime } from '../types'
+import type { AssetBinding } from './webpack/loaders/get-module-build-info'
+import type { AppBuildManifest } from './webpack/plugins/app-build-manifest-plugin'
 import type {
   EdgeFunctionDefinition,
   MiddlewareManifest,
 } from './webpack/plugins/middleware-plugin'
-import type { WebpackLayerName } from '../lib/constants'
-import type { AppPageModule } from '../server/route-modules/app-page/module'
-import type { RouteModule } from '../server/route-modules/route-module'
-import type { NextComponentType } from '../shared/lib/utils'
 
-import '../server/require-hook'
-import '../server/node-polyfill-crypto'
 import '../server/node-environment'
+import '../server/node-polyfill-crypto'
+import '../server/require-hook'
 
-import {
-  green,
-  yellow,
-  red,
-  cyan,
-  white,
-  bold,
-  underline,
-} from '../lib/picocolors'
-import getGzipSize from 'next/dist/compiled/gzip-size'
-import textTable from 'next/dist/compiled/text-table'
-import path from 'path'
 import { promises as fs } from 'fs'
+import type { OutgoingHttpHeaders } from 'http'
+import { Sema } from 'next/dist/compiled/async-sema'
+import browserslist from 'next/dist/compiled/browserslist'
+import getGzipSize from 'next/dist/compiled/gzip-size'
 import { isValidElementType } from 'next/dist/compiled/react-is'
 import stripAnsi from 'next/dist/compiled/strip-ansi'
-import browserslist from 'next/dist/compiled/browserslist'
+import textTable from 'next/dist/compiled/text-table'
+import path from 'path'
+import { createIncrementalCache } from '../export/helpers/create-incremental-cache'
+import { isClientReference } from '../lib/client-reference'
 import {
-  SSG_GET_INITIAL_PROPS_CONFLICT,
+  INSTRUMENTATION_HOOK_FILENAME,
+  MIDDLEWARE_FILENAME,
   SERVER_PROPS_GET_INIT_PROPS_CONFLICT,
   SERVER_PROPS_SSG_CONFLICT,
-  MIDDLEWARE_FILENAME,
-  INSTRUMENTATION_HOOK_FILENAME,
+  SSG_GET_INITIAL_PROPS_CONFLICT,
   WEBPACK_LAYERS,
 } from '../lib/constants'
+import type { FallbackMode } from '../lib/fallback'
+import { isEdgeRuntime } from '../lib/is-edge-runtime'
+import {
+  bold,
+  cyan,
+  green,
+  red,
+  underline,
+  white,
+  yellow,
+} from '../lib/picocolors'
+import prettyBytes from '../lib/pretty-bytes'
+import { checkIsRoutePPREnabled } from '../server/lib/experimental/ppr'
+import { findPageFile } from '../server/lib/find-page-file'
+import { isInterceptionRouteAppPath } from '../server/lib/interception-routes'
+import type { LoadComponentsReturnType } from '../server/load-components'
+import { loadComponents } from '../server/load-components'
+import { RouteKind } from '../server/route-kind'
+import { setHttpClientAndAgentOptions } from '../server/setup-http-agent-env'
+import { getRuntimeContext } from '../server/web/sandbox'
 import {
   MODERN_BROWSERSLIST_TARGET,
   UNDERSCORE_NOT_FOUND_ROUTE,
 } from '../shared/lib/constants'
-import prettyBytes from '../lib/pretty-bytes'
-import { isDynamicRoute } from '../shared/lib/router/utils/is-dynamic'
-import { findPageFile } from '../server/lib/find-page-file'
-import { isEdgeRuntime } from '../lib/is-edge-runtime'
-import * as Log from './output/log'
-import { loadComponents } from '../server/load-components'
-import type { LoadComponentsReturnType } from '../server/load-components'
-import { trace } from '../trace'
-import { setHttpClientAndAgentOptions } from '../server/setup-http-agent-env'
-import { Sema } from 'next/dist/compiled/async-sema'
+import { denormalizeAppPagePath } from '../shared/lib/page-path/denormalize-app-path'
 import { denormalizePagePath } from '../shared/lib/page-path/denormalize-page-path'
 import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
-import { getRuntimeContext } from '../server/web/sandbox'
-import { isClientReference } from '../lib/client-reference'
 import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
-import { denormalizeAppPagePath } from '../shared/lib/page-path/denormalize-app-path'
-import { RouteKind } from '../server/route-kind'
+import { isDynamicRoute } from '../shared/lib/router/utils/is-dynamic'
+import { trace } from '../trace'
+import * as Log from './output/log'
 import type { PageExtensions } from './page-extensions-type'
-import { isInterceptionRouteAppPath } from '../server/lib/interception-routes'
-import { checkIsRoutePPREnabled } from '../server/lib/experimental/ppr'
-import type { FallbackMode } from '../lib/fallback'
-import type { OutgoingHttpHeaders } from 'http'
 import type { AppSegmentConfig } from './segment-config/app/app-segment-config'
 import type { AppSegment } from './segment-config/app/app-segments'
 import { collectSegments } from './segment-config/app/app-segments'
-import { createIncrementalCache } from '../export/helpers/create-incremental-cache'
 import { collectRootParamKeys } from './segment-config/app/collect-root-param-keys'
 import { buildAppStaticPaths } from './static-paths/app'
 import { buildPagesStaticPaths } from './static-paths/pages'
@@ -996,7 +996,7 @@ export async function isPageStatic({
   cacheLifeProfiles?: {
     [profile: string]: import('../server/use-cache/cache-life').CacheLife
   }
-  nextConfigOutput: 'standalone' | 'export' | undefined
+  nextConfigOutput: 'standalone' | 'export' | 'bun' | undefined
   pprConfig: ExperimentalPPRConfig | undefined
   buildId: string
   sriEnabled: boolean
@@ -1461,6 +1461,7 @@ export function detectConflictingPaths(
 }
 
 export async function copyTracedFiles(
+  STANDALONE_DIRECTORY: string,
   dir: string,
   distDir: string,
   pageKeys: readonly string[],
@@ -1471,7 +1472,7 @@ export async function copyTracedFiles(
   hasInstrumentationHook: boolean,
   staticPages: Set<string>
 ) {
-  const outputPath = path.join(distDir, 'standalone')
+  const outputPath = path.join(distDir, STANDALONE_DIRECTORY)
   let moduleType = false
   const nextConfig = {
     ...serverConfig,

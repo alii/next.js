@@ -4,10 +4,10 @@ import JSON5 from 'next/dist/compiled/json5'
 import { createConfigItem, loadOptions } from 'next/dist/compiled/babel/core'
 import loadConfig from 'next/dist/compiled/babel/core-lib-config'
 
+import jsx from 'next/dist/compiled/babel/plugin-syntax-jsx'
+import * as Log from '../../output/log'
 import type { NextBabelLoaderOptions, NextJsLoaderContext } from './types'
 import { consumeIterator } from './util'
-import * as Log from '../../output/log'
-import jsx from 'next/dist/compiled/babel/plugin-syntax-jsx'
 
 const nextDistPath =
   /(next[\\/]dist[\\/]shared[\\/]lib)|(next[\\/]dist[\\/]client)|(next[\\/]dist[\\/]pages)/
@@ -72,6 +72,7 @@ function getPlugins(
     cacheCharacteristics
 
   const { development } = loaderOptions
+
   const hasReactRefresh =
     loaderOptions.transformMode !== 'standalone'
       ? loaderOptions.hasReactRefresh

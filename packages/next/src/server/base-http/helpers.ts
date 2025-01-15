@@ -47,3 +47,7 @@ export const isNodeNextRequest = (
 export const isNodeNextResponse = (
   res: BaseNextResponse
 ): res is NodeNextResponse => process.env.NEXT_RUNTIME !== 'edge'
+
+declare const Bun: unknown
+
+export const isBun = typeof Bun !== 'undefined'

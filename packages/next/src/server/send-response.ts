@@ -1,5 +1,5 @@
 import type { BaseNextRequest, BaseNextResponse } from './base-http'
-import { isNodeNextResponse } from './base-http/helpers'
+import { isBun, isNodeNextResponse } from './base-http/helpers'
 
 import { pipeToNodeResponse } from './pipe-readable'
 import { splitCookiesString } from './web/utils'
@@ -17,6 +17,16 @@ export async function sendResponse(
   response: Response,
   waitUntil?: Promise<unknown>
 ): Promise<void> {
+  if (isBun) {
+    const dest = res.destination as WritableStream
+
+    if (response.body && req.method !== 'HEAD') {
+      await response.body.pipeTo(dest)
+    } else {
+      await dest.close()
+    }
+  }
+
   if (
     // The type check here ensures that `req` is correctly typed, and the
     // environment variable check provides dead code elimination.
@@ -61,7 +71,6 @@ export async function sendResponse(
      *
      * See packages/next/server/next-server.ts
      */
-
     const { originalResponse } = res
 
     // A response body must not be sent for HEAD requests. See https://httpwg.org/specs/rfc9110.html#HEAD

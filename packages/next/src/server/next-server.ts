@@ -1,115 +1,115 @@
 import './node-environment'
-import './require-hook'
 import './node-polyfill-crypto'
+import './require-hook'
 
+import type { IncomingMessage, ServerResponse } from 'http'
+import type { ParsedUrlQuery } from 'querystring'
+import type { UrlWithParsedQuery } from 'url'
+import type { PrerenderManifest } from '../build'
+import type { MiddlewareManifest } from '../build/webpack/plugins/middleware-plugin'
+import type { PagesManifest } from '../build/webpack/plugins/pages-manifest-plugin'
+import type { MiddlewareRouteMatch } from '../shared/lib/router/utils/middleware-route-matcher'
+import type { ParsedUrl } from '../shared/lib/router/utils/parse-url'
 import type { CacheFs } from '../shared/lib/utils'
 import {
   DecodeError,
-  PageNotFoundError,
   MiddlewareNotFoundError,
+  PageNotFoundError,
 } from '../shared/lib/utils'
-import type { MiddlewareManifest } from '../build/webpack/plugins/middleware-plugin'
+import type { WaitUntil } from './after/builtin-request-context'
+import type { ExpireTime, Revalidate } from './lib/revalidate'
 import type RenderResult from './render-result'
-import type { FetchEventResult } from './web/types'
-import type { PrerenderManifest } from '../build'
-import type { PagesManifest } from '../build/webpack/plugins/pages-manifest-plugin'
 import type { NextParsedUrlQuery, NextUrlWithParsedQuery } from './request-meta'
 import type { Params } from './request/params'
-import type { MiddlewareRouteMatch } from '../shared/lib/router/utils/middleware-route-matcher'
 import type { RouteMatch } from './route-matches/route-match'
-import type { IncomingMessage, ServerResponse } from 'http'
 import type { PagesAPIRouteModule } from './route-modules/pages-api/module'
-import type { UrlWithParsedQuery } from 'url'
-import type { ParsedUrlQuery } from 'querystring'
-import type { ParsedUrl } from '../shared/lib/router/utils/parse-url'
-import type { Revalidate, ExpireTime } from './lib/revalidate'
-import type { WaitUntil } from './after/builtin-request-context'
+import type { FetchEventResult } from './web/types'
 
 import fs from 'fs'
 import { join, resolve } from 'path'
-import { getRouteMatcher } from '../shared/lib/router/utils/route-matcher'
-import { addRequestMeta, getRequestMeta } from './request-meta'
+import * as Log from '../build/output/log'
+import { findDir } from '../lib/find-pages-dir'
 import {
-  PAGES_MANIFEST,
+  APP_PATHS_MANIFEST,
   BUILD_ID_FILE,
+  CLIENT_PUBLIC_FILES_PATH,
   MIDDLEWARE_MANIFEST,
+  NEXT_FONT_MANIFEST,
+  PAGES_MANIFEST,
+  PHASE_PRODUCTION_BUILD,
   PRERENDER_MANIFEST,
   ROUTES_MANIFEST,
-  CLIENT_PUBLIC_FILES_PATH,
-  APP_PATHS_MANIFEST,
   SERVER_DIRECTORY,
-  NEXT_FONT_MANIFEST,
-  PHASE_PRODUCTION_BUILD,
   UNDERSCORE_NOT_FOUND_ROUTE_ENTRY,
 } from '../shared/lib/constants'
-import { findDir } from '../lib/find-pages-dir'
-import { NodeNextRequest, NodeNextResponse } from './base-http/node'
-import { sendRenderResult } from './send-payload'
 import { parseUrl } from '../shared/lib/router/utils/parse-url'
-import * as Log from '../build/output/log'
+import { getRouteMatcher } from '../shared/lib/router/utils/route-matcher'
+import { NodeNextRequest, NodeNextResponse } from './base-http/node'
+import { addRequestMeta, getRequestMeta } from './request-meta'
+import { sendRenderResult } from './send-payload'
 
-import type {
-  Options,
-  FindComponentsResult,
-  MiddlewareRoutingItem,
-  RequestContext,
-  NormalizedRouteManifest,
-  LoadedRenderOpts,
-  RouteHandler,
-  NextEnabledDirectories,
-  BaseRequestHandler,
-} from './base-server'
-import BaseServer, { NoFallbackError } from './base-server'
-import { getMaybePagePath, getPagePath } from './require'
+import { loadEnvConfig } from '@next/env'
+import isError, { getProperError } from '../lib/is-error'
 import { denormalizePagePath } from '../shared/lib/page-path/denormalize-page-path'
 import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
-import { loadComponents } from './load-components'
-import type { LoadComponentsReturnType } from './load-components'
-import isError, { getProperError } from '../lib/is-error'
-import { splitCookiesString, toNodeOutgoingHttpHeaders } from './web/utils'
+import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
+import { getNextPathnameInfo } from '../shared/lib/router/utils/get-next-pathname-info'
 import { getMiddlewareRouteMatcher } from '../shared/lib/router/utils/middleware-route-matcher'
-import { loadEnvConfig } from '@next/env'
 import { urlQueryToSearchParams } from '../shared/lib/router/utils/querystring'
 import { removeTrailingSlash } from '../shared/lib/router/utils/remove-trailing-slash'
-import { getNextPathnameInfo } from '../shared/lib/router/utils/get-next-pathname-info'
-import { getCloneableBody } from './body-streams'
 import { checkIsOnDemandRevalidate } from './api-utils'
+import type {
+  BaseRequestHandler,
+  FindComponentsResult,
+  LoadedRenderOpts,
+  MiddlewareRoutingItem,
+  NextEnabledDirectories,
+  NormalizedRouteManifest,
+  Options,
+  RequestContext,
+  RouteHandler,
+} from './base-server'
+import BaseServer, { NoFallbackError } from './base-server'
+import { getCloneableBody } from './body-streams'
+import { IncrementalCache } from './lib/incremental-cache'
+import type { LoadComponentsReturnType } from './load-components'
+import { loadComponents } from './load-components'
+import { getMaybePagePath, getPagePath } from './require'
 import ResponseCache, {
   CachedRouteKind,
   type IncrementalCacheItem,
 } from './response-cache'
-import { IncrementalCache } from './lib/incremental-cache'
-import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
+import { splitCookiesString, toNodeOutgoingHttpHeaders } from './web/utils'
 
 import { setHttpClientAndAgentOptions } from './setup-http-agent-env'
 
-import { isPagesAPIRouteMatch } from './route-matches/pages-api-route-match'
-import type { PagesAPIRouteMatch } from './route-matches/pages-api-route-match'
-import type { MatchOptions } from './route-matcher-managers/route-matcher-manager'
-import { INSTRUMENTATION_HOOK_FILENAME } from '../lib/constants'
-import { BubbledError, getTracer } from './lib/trace/tracer'
-import { NextNodeServerSpan } from './lib/trace/constants'
-import { nodeFs } from './lib/node-fs-methods'
-import { getRouteRegex } from '../shared/lib/router/utils/route-regex'
-import { pipeToNodeResponse } from './pipe-readable'
-import { createRequestResponseMocks } from './lib/mock-request'
-import { NEXT_RSC_UNION_QUERY } from '../client/components/app-router-headers'
-import { signalFromNodeResponse } from './web/spec-extension/adapters/next-request'
-import { RouteModuleLoader } from './lib/module-loader/route-module-loader'
-import { loadManifest } from './load-manifest'
-import { lazyRenderAppPage } from './route-modules/app-page/module.render'
-import { lazyRenderPagesPage } from './route-modules/pages/module.render'
-import { interopDefault } from '../lib/interop-default'
-import { formatDynamicImportPath } from '../lib/format-dynamic-import-path'
 import type { NextFontManifest } from '../build/webpack/plugins/next-font-manifest-plugin'
+import { NEXT_RSC_UNION_QUERY } from '../client/components/app-router-headers'
+import { INSTRUMENTATION_HOOK_FILENAME } from '../lib/constants'
+import { formatDynamicImportPath } from '../lib/format-dynamic-import-path'
 import { isInterceptionRouteRewrite } from '../lib/generate-interception-routes-rewrites'
-import type { ServerOnInstrumentationRequestError } from './app-render/types'
-import { RouteKind } from './route-kind'
+import { interopDefault } from '../lib/interop-default'
 import { InvariantError } from '../shared/lib/invariant-error'
+import { getRouteRegex } from '../shared/lib/router/utils/route-regex'
 import { AwaiterOnce } from './after/awaiter'
+import type { ServerOnInstrumentationRequestError } from './app-render/types'
 import { AsyncCallbackSet } from './lib/async-callback-set'
 import DefaultCacheHandler from './lib/cache-handlers/default'
+import { createRequestResponseMocks } from './lib/mock-request'
+import { RouteModuleLoader } from './lib/module-loader/route-module-loader'
+import { nodeFs } from './lib/node-fs-methods'
+import { NextNodeServerSpan } from './lib/trace/constants'
+import { BubbledError, getTracer } from './lib/trace/tracer'
+import { loadManifest } from './load-manifest'
+import { pipeToNodeResponse } from './pipe-readable'
+import { RouteKind } from './route-kind'
+import type { MatchOptions } from './route-matcher-managers/route-matcher-manager'
+import type { PagesAPIRouteMatch } from './route-matches/pages-api-route-match'
+import { isPagesAPIRouteMatch } from './route-matches/pages-api-route-match'
+import { lazyRenderAppPage } from './route-modules/app-page/module.render'
+import { lazyRenderPagesPage } from './route-modules/pages/module.render'
 import { cacheHandlerGlobal, cacheHandlersSymbol } from './use-cache/constants'
+import { signalFromNodeResponse } from './web/spec-extension/adapters/next-request'
 
 export * from './base-server'
 

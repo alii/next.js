@@ -4,19 +4,19 @@ import type { AppSegment } from '../segment-config/app/app-segments'
 import type { StaticPathsResult } from './types'
 
 import path from 'path'
+import { createIncrementalCache } from '../../export/helpers/create-incremental-cache'
+import { FallbackMode } from '../../lib/fallback'
 import { AfterRunner } from '../../server/after/run-with-after'
 import { createWorkStore } from '../../server/async-storage/work-store'
-import { FallbackMode } from '../../lib/fallback'
+import type { NextConfigComplete } from '../../server/config-shared'
+import type { IncrementalCache } from '../../server/lib/incremental-cache'
+import escapePathDelimiters from '../../shared/lib/router/utils/escape-path-delimiters'
 import { getRouteMatcher } from '../../shared/lib/router/utils/route-matcher'
 import {
   getRouteRegex,
   type RouteRegex,
 } from '../../shared/lib/router/utils/route-regex'
-import type { IncrementalCache } from '../../server/lib/incremental-cache'
-import { normalizePathname, encodeParam } from './utils'
-import escapePathDelimiters from '../../shared/lib/router/utils/escape-path-delimiters'
-import { createIncrementalCache } from '../../export/helpers/create-incremental-cache'
-import type { NextConfigComplete } from '../../server/config-shared'
+import { encodeParam, normalizePathname } from './utils'
 
 /**
  * Compares two parameters to see if they're equal.
@@ -284,7 +284,7 @@ export async function buildAppStaticPaths({
   }
   maxMemoryCacheSize?: number
   requestHeaders: IncrementalCache['requestHeaders']
-  nextConfigOutput: 'standalone' | 'export' | undefined
+  nextConfigOutput: 'standalone' | 'export' | 'bun' | undefined
   ComponentMod: AppPageModule
   isRoutePPREnabled: boolean
   buildId: string

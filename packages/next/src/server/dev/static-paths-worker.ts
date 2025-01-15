@@ -1,24 +1,24 @@
 import type { NextConfigComplete } from '../config-shared'
 
-import '../require-hook'
 import '../node-environment'
+import '../require-hook'
 
-import { reduceAppConfig } from '../../build/utils'
 import { collectSegments } from '../../build/segment-config/app/app-segments'
+import { collectRootParamKeys } from '../../build/segment-config/app/collect-root-param-keys'
+import { buildAppStaticPaths } from '../../build/static-paths/app'
+import { buildPagesStaticPaths } from '../../build/static-paths/pages'
 import type { StaticPathsResult } from '../../build/static-paths/types'
-import { loadComponents } from '../load-components'
-import { setHttpClientAndAgentOptions } from '../setup-http-agent-env'
-import type { IncrementalCache } from '../lib/incremental-cache'
-import { isAppPageRouteModule } from '../route-modules/checks'
+import { reduceAppConfig } from '../../build/utils'
+import { createIncrementalCache } from '../../export/helpers/create-incremental-cache'
+import { InvariantError } from '../../shared/lib/invariant-error'
 import {
   checkIsRoutePPREnabled,
   type ExperimentalPPRConfig,
 } from '../lib/experimental/ppr'
-import { InvariantError } from '../../shared/lib/invariant-error'
-import { collectRootParamKeys } from '../../build/segment-config/app/collect-root-param-keys'
-import { buildAppStaticPaths } from '../../build/static-paths/app'
-import { buildPagesStaticPaths } from '../../build/static-paths/pages'
-import { createIncrementalCache } from '../../export/helpers/create-incremental-cache'
+import type { IncrementalCache } from '../lib/incremental-cache'
+import { loadComponents } from '../load-components'
+import { isAppPageRouteModule } from '../route-modules/checks'
+import { setHttpClientAndAgentOptions } from '../setup-http-agent-env'
 
 type RuntimeConfig = {
   pprConfig: ExperimentalPPRConfig | undefined
@@ -71,7 +71,7 @@ export async function loadStaticPaths({
   cacheLifeProfiles?: {
     [profile: string]: import('../../server/use-cache/cache-life').CacheLife
   }
-  nextConfigOutput: 'standalone' | 'export' | undefined
+  nextConfigOutput: 'standalone' | 'export' | 'bun' | undefined
   buildId: string
   authInterrupts: boolean
   sriEnabled: boolean

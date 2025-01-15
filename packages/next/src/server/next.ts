@@ -1,32 +1,32 @@
+import type { IncomingMessage, ServerResponse } from 'http'
+import type { Duplex } from 'stream'
+import type { UrlWithParsedQuery } from 'url'
 import type { Options as DevServerOptions } from './dev/next-dev-server'
 import type {
   NodeRequestHandler,
   Options as ServerOptions,
 } from './next-server'
-import type { UrlWithParsedQuery } from 'url'
-import type { IncomingMessage, ServerResponse } from 'http'
-import type { Duplex } from 'stream'
 import type { NextUrlWithParsedQuery } from './request-meta'
 
-import './require-hook'
 import './node-polyfill-crypto'
+import './require-hook'
 
-import type { default as NextNodeServer } from './next-server'
-import * as log from '../build/output/log'
-import loadConfig from './config'
 import path, { resolve } from 'path'
+import * as log from '../build/output/log'
 import { NON_STANDARD_NODE_ENV } from '../lib/constants'
 import {
   PHASE_DEVELOPMENT_SERVER,
+  PHASE_PRODUCTION_SERVER,
   SERVER_FILES_MANIFEST,
 } from '../shared/lib/constants'
-import { PHASE_PRODUCTION_SERVER } from '../shared/lib/constants'
-import { getTracer } from './lib/trace/tracer'
-import { NextServerSpan } from './lib/trace/constants'
 import { formatUrl } from '../shared/lib/router/utils/format-url'
-import type { ServerFields } from './lib/router-utils/setup-dev-bundler'
-import type { ServerInitResult } from './lib/render-server'
+import loadConfig from './config'
 import { AsyncCallbackSet } from './lib/async-callback-set'
+import type { ServerInitResult } from './lib/render-server'
+import type { ServerFields } from './lib/router-utils/setup-dev-bundler'
+import { NextServerSpan } from './lib/trace/constants'
+import { getTracer } from './lib/trace/tracer'
+import type { default as NextNodeServer } from './next-server'
 
 let ServerImpl: typeof NextNodeServer
 
@@ -260,6 +260,10 @@ export class NextServer implements NextWrapperServer {
                 `"next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.`
               )
             }
+          } else if (conf.output === 'bun') {
+            throw new Error(
+              `"next start" does not work with "output: bun" configuration. Use "bun .next/bun/server.js" instead.`
+            )
           } else if (conf.output === 'export') {
             throw new Error(
               `"next start" does not work with "output: export" configuration. Use "npx serve@latest out" instead.`
