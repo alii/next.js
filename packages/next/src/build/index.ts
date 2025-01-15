@@ -586,6 +586,7 @@ async function writeImagesManifest(
 }
 
 async function writeStandaloneDirectory(
+  output: 'bun' | 'standalone',
   nextBuildSpan: Span,
   distDir: string,
   pageKeys: { pages: string[]; app: string[] | undefined },
@@ -596,16 +597,17 @@ async function writeStandaloneDirectory(
   hasInstrumentationHook: boolean,
   staticPages: Set<string>,
   loadedEnvFiles: LoadedEnvFiles,
-  appDir: string | undefined,
-  isOutputBun: boolean
+  appDir: string | undefined
 ) {
-  const STANDALONE_DIRECTORY = isOutputBun ? 'bun' : 'standalone'
+  const standaloneDirectoryName = output // 'bun' output => 'bun' folder, 'standalone' output => 'standalone' folder
 
   await nextBuildSpan
     .traceChild('write-standalone-directory')
     .traceAsyncFn(async () => {
       await copyTracedFiles(
-        STANDALONE_DIRECTORY,
+        standaloneDirectoryName,
+        output,
+
         // requiredServerFiles.appDir Refers to the application directory, not App Router.
         requiredServerFiles.appDir,
         distDir,
@@ -632,7 +634,7 @@ async function writeStandaloneDirectory(
         const filePath = path.join(requiredServerFiles.appDir, file)
         const outputPath = path.join(
           distDir,
-          STANDALONE_DIRECTORY,
+          standaloneDirectoryName,
           path.relative(outputFileTracingRoot, filePath)
         )
         await fs.mkdir(path.dirname(outputPath), {
@@ -644,7 +646,7 @@ async function writeStandaloneDirectory(
         path.join(distDir, SERVER_DIRECTORY, 'pages'),
         path.join(
           distDir,
-          STANDALONE_DIRECTORY,
+          standaloneDirectoryName,
           path.relative(outputFileTracingRoot, distDir),
           SERVER_DIRECTORY,
           'pages'
@@ -658,7 +660,7 @@ async function writeStandaloneDirectory(
             originalServerApp,
             path.join(
               distDir,
-              STANDALONE_DIRECTORY,
+              standaloneDirectoryName,
               path.relative(outputFileTracingRoot, distDir),
               SERVER_DIRECTORY,
               'app'
@@ -3735,10 +3737,9 @@ export default async function build(
           configOutDir,
           nextBuildSpan
         )
-      }
-
-      if (config.output === 'standalone' || config.output === 'bun') {
+      } else if (config.output === 'standalone' || config.output === 'bun') {
         await writeStandaloneDirectory(
+          config.output,
           nextBuildSpan,
           distDir,
           pageKeys,
@@ -3749,9 +3750,10 @@ export default async function build(
           hasInstrumentationHook,
           staticPages,
           loadedEnvFiles,
-          appDir,
-          config.output === 'bun'
+          appDir
         )
+      } else {
+        config.output satisfies never
       }
 
       if (postBuildSpinner) postBuildSpinner.stopAndPersist()
