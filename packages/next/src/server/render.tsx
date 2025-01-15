@@ -43,6 +43,7 @@ import stripAnsi from 'next/dist/compiled/strip-ansi'
 import ReactDOMServerPages from 'next/dist/server/ReactDOMServerPages'
 import React, { type JSX } from 'react'
 import { StyleRegistry, createStyleRegistry } from 'styled-jsx'
+import type { ReactDevOverlayType } from '../client/components/react-dev-overlay/pages/ReactDevOverlay'
 import {
   GSP_NO_RETURNED_VALUE,
   GSSP_COMPONENT_MEMBER_ERROR,
@@ -240,7 +241,7 @@ export type RenderOptsPartial = {
   nextExport?: boolean
   dev?: boolean
   ampPath?: string
-  ErrorDebug?: React.ComponentType<{ error: Error }>
+  ErrorDebug?: ReactDevOverlayType
   ampValidator?: (html: string, pathname: string) => Promise<void>
   ampSkipValidation?: boolean
   ampOptimizerConfig?: { [key: string]: any }
@@ -1298,7 +1299,7 @@ export async function renderToHTMLImpl(
 
           const html = await renderToString(
             <Body>
-              <ErrorDebug error={ctx.err} />
+              <ErrorDebug />
             </Body>
           )
           return { html, head }
@@ -1343,7 +1344,7 @@ export async function renderToHTMLImpl(
 
       return ctx.err && ErrorDebug ? (
         <Body>
-          <ErrorDebug error={ctx.err} />
+          <ErrorDebug />
         </Body>
       ) : (
         <Body>

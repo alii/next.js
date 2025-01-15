@@ -5,7 +5,7 @@ import type {
   Redirect,
   Rewrite,
 } from '../lib/load-custom-routes'
-import type { NextConfig, NextConfigComplete } from '../server/config-shared'
+import type { NextConfigComplete } from '../server/config-shared'
 import type { BuildManifest } from '../server/get-page-files'
 import type { ExperimentalPPRConfig } from '../server/lib/experimental/ppr'
 import type { AppPageModule } from '../server/route-modules/app-page/module'
@@ -1467,7 +1467,7 @@ export async function copyTracedFiles(
   pageKeys: readonly string[],
   appPageKeys: readonly string[] | undefined,
   tracingRoot: string,
-  serverConfig: NextConfig,
+  serverConfig: NextConfigComplete,
   middlewareManifest: MiddlewareManifest,
   hasInstrumentationHook: boolean,
   staticPages: Set<string>

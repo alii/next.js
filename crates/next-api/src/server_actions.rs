@@ -30,7 +30,7 @@ use turbopack_core::{
     context::AssetContext,
     file_source::FileSource,
     module::Module,
-    module_graph::SingleModuleGraph,
+    module_graph::{ModuleGraph, SingleModuleGraph, SingleModuleGraphModuleNode},
     output::OutputAsset,
     reference_type::{EcmaScriptModulesReferenceSubType, ReferenceType},
     resolve::ModulePart,
@@ -63,6 +63,7 @@ pub(crate) async fn create_server_actions_manifest(
     page_name: RcStr,
     runtime: NextRuntime,
     rsc_asset_context: Vc<Box<dyn AssetContext>>,
+    module_graph: Vc<ModuleGraph>,
     chunking_context: Vc<Box<dyn ChunkingContext>>,
 ) -> Result<Vc<ServerActionsManifest>> {
     let loader =
@@ -73,7 +74,7 @@ pub(crate) async fn create_server_actions_manifest(
         .to_resolved()
         .await?;
 
-    let chunk_item = loader.as_chunk_item(Vc::upcast(chunking_context));
+    let chunk_item = loader.as_chunk_item(module_graph, Vc::upcast(chunking_context));
     let manifest = build_manifest(node_root, page_name, runtime, actions, chunk_item).await?;
     Ok(ServerActionsManifest {
         loader: evaluable,
@@ -166,7 +167,7 @@ async fn build_manifest(
             &key,
             ActionManifestWorkerEntry {
                 module_id: ActionManifestModuleId::String(loader_id.as_str()),
-                is_async: *chunk_item.is_self_async().await?,
+                is_async: *chunk_item.module().is_self_async().await?,
             },
         );
         entry.layer.insert(&key, *layer);
@@ -399,8 +400,10 @@ pub async fn map_server_actions(graph: Vc<SingleModuleGraph>) -> Result<Vc<AllMo
         .iter_nodes()
         .map(|node| {
             async move {
+                let SingleModuleGraphModuleNode { module, layer, .. } = node;
+
                 // TODO: compare module contexts instead?
-                let layer = match &node.layer {
+                let layer = match &layer {
                     Some(layer) if &**layer == "app-rsc" || &**layer == "app-edge-rsc" => {
                         ActionLayer::Rsc
                     }
@@ -410,9 +413,9 @@ pub async fn map_server_actions(graph: Vc<SingleModuleGraph>) -> Result<Vc<AllMo
                 };
                 // TODO the old implementation did parse_actions(to_rsc_context(module))
                 // is that really necessary?
-                Ok(parse_actions(*node.module)
+                Ok(parse_actions(**module)
                     .await?
-                    .map(|action_map| (node.module, (layer, action_map))))
+                    .map(|action_map| (*module, (layer, action_map))))
             }
         })
         .try_flat_join()

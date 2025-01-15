@@ -6,7 +6,6 @@ import React from 'react'
 import { ShadowPortal } from '../internal/components/ShadowPortal'
 import { BuildError } from '../internal/container/BuildError'
 import { Errors } from '../internal/container/Errors'
-import { StaticIndicator } from '../internal/container/StaticIndicator'
 import { Base } from '../internal/styles/Base'
 import { ComponentStyles } from '../internal/styles/ComponentStyles'
 import { CssReset } from '../internal/styles/CssReset'
@@ -37,13 +36,14 @@ export default class ReactDevOverlay extends React.PureComponent<
   }
 
   render() {
-    const { state, children, dispatcher } = this.props
+    const { state, children } = this.props
     const { isReactError } = this.state
 
     const hasBuildError = state.buildError != null
-    const hasRuntimeErrors = Boolean(state.errors.length)
     const hasStaticIndicator = state.staticIndicator
     const debugInfo = state.debugInfo
+
+    const isTurbopack = !!process.env.TURBOPACK
 
     return (
       <>
@@ -63,31 +63,24 @@ export default class ReactDevOverlay extends React.PureComponent<
           {state.rootLayoutMissingTags?.length ? (
             <RootLayoutMissingTagsError
               missingTags={state.rootLayoutMissingTags}
+              isTurbopack={isTurbopack}
             />
           ) : hasBuildError ? (
             <BuildError
               message={state.buildError!}
               versionInfo={state.versionInfo}
+              isTurbopack={isTurbopack}
             />
           ) : (
-            <>
-              {hasRuntimeErrors ? (
-                <Errors
-                  isAppDir={true}
-                  initialDisplayState={
-                    isReactError ? 'fullscreen' : 'minimized'
-                  }
-                  errors={state.errors}
-                  versionInfo={state.versionInfo}
-                  hasStaticIndicator={hasStaticIndicator}
-                  debugInfo={debugInfo}
-                />
-              ) : null}
-
-              {hasStaticIndicator && (
-                <StaticIndicator dispatcher={dispatcher} />
-              )}
-            </>
+            <Errors
+              isTurbopack={isTurbopack}
+              isAppDir={true}
+              initialDisplayState={isReactError ? 'fullscreen' : 'minimized'}
+              errors={state.errors}
+              versionInfo={state.versionInfo}
+              hasStaticIndicator={hasStaticIndicator}
+              debugInfo={debugInfo}
+            />
           )}
         </ShadowPortal>
       </>

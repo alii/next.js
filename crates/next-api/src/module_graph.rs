@@ -1,11 +1,7 @@
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-};
+use std::{borrow::Cow, collections::HashMap};
 
 use anyhow::Result;
 use next_core::{
-    mode::NextMode,
     next_client_reference::{
         find_server_entries, ClientReference, ClientReferenceGraphResult, ClientReferenceType,
         ServerEntries, VisitedClientReferenceGraphNodes,
@@ -21,81 +17,14 @@ use turbopack_core::{
     context::AssetContext,
     issue::Issue,
     module::Module,
-    module_graph::{GraphTraversalAction, SingleModuleGraph},
+    module_graph::{GraphTraversalAction, ModuleGraph, SingleModuleGraph},
 };
 
 use crate::{
     client_references::{map_client_references, ClientReferenceMapType, ClientReferencesSet},
     dynamic_imports::{map_next_dynamic, DynamicImportEntries, DynamicImportEntriesMapType},
-    project::Project,
     server_actions::{map_server_actions, to_rsc_context, AllActions, AllModuleActions},
 };
-
-#[turbo_tasks::value(transparent)]
-#[derive(Clone, Debug)]
-struct SingleModuleGraphs(pub Vec<ResolvedVc<SingleModuleGraph>>);
-
-/// Implements layout segment optimization to compute a graph "chain" for each layout segment
-#[turbo_tasks::function]
-async fn get_module_graph_for_endpoint(
-    entry: ResolvedVc<Box<dyn Module>>,
-) -> Result<Vc<SingleModuleGraphs>> {
-    let ServerEntries {
-        server_utils,
-        server_component_entries,
-    } = &*find_server_entries(*entry).await?;
-
-    let mut graphs = vec![];
-
-    let mut visited_modules = if !server_utils.is_empty() {
-        let graph = SingleModuleGraph::new_with_entries_visited(
-            *entry,
-            server_utils.iter().map(|m| **m).collect(),
-            Vc::cell(Default::default()),
-        )
-        .to_resolved()
-        .await?;
-        graphs.push(graph);
-        graph
-            .await?
-            .iter_nodes()
-            .map(|n| n.module)
-            .collect::<HashSet<_>>()
-    } else {
-        HashSet::new()
-    };
-
-    // ast-grep-ignore: to-resolved-in-loop
-    for module in server_component_entries.iter() {
-        let graph = SingleModuleGraph::new_with_entries_visited(
-            *entry,
-            vec![Vc::upcast(**module)],
-            Vc::cell(visited_modules.clone()),
-        )
-        .to_resolved()
-        .await?;
-        graphs.push(graph);
-        let is_layout = module.server_path().file_stem().await?.as_deref() == Some("layout");
-        if is_layout {
-            // Only propagate the visited_modules of the parent layout(s), not across siblings such
-            // as loading.js and page.js.
-            visited_modules.extend(graph.await?.iter_nodes().map(|n| n.module));
-        }
-    }
-
-    // Any previous iteration above would have added the entry node, but not actually visited it.
-    visited_modules.remove(&entry);
-    let graph = SingleModuleGraph::new_with_entries_visited(
-        *entry,
-        vec![*entry],
-        Vc::cell(visited_modules.clone()),
-    )
-    .to_resolved()
-    .await?;
-    graphs.push(graph);
-
-    Ok(Vc::cell(graphs))
-}
 
 #[turbo_tasks::value]
 pub struct NextDynamicGraph {
@@ -170,13 +99,19 @@ impl NextDynamicGraph {
                 InClientReference(ClientReferenceType),
             }
 
+            let entries: &[ResolvedVc<Box<dyn Module>>] = if !self.is_single_page {
+                &[entry]
+            } else {
+                &graph.entries
+            };
+
             let mut result = vec![];
 
             // module -> the client reference entry (if any)
             let mut state_map = HashMap::new();
-            graph.traverse_edges_from_entry(entry, |(parent_node, node)| {
+            graph.traverse_edges_from_entries(entries, |parent_info, node| {
                 let module = node.module;
-                let Some(parent_node) = parent_node else {
+                let Some((parent_node, _)) = parent_info else {
                     state_map.insert(module, VisitState::Entry);
                     return GraphTraversalAction::Continue;
                 };
@@ -352,22 +287,23 @@ impl ClientReferencesGraph {
             let data = &*self.data.await?;
             let graph = &*self.graph.await?;
 
+            let entries: &[ResolvedVc<Box<dyn Module>>] = if !self.is_single_page {
+                &[entry]
+            } else {
+                &graph.entries
+            };
+
             let mut client_references = FxIndexSet::default();
             // Make sure None (for the various internal next/dist/esm/client/components/*) is
             // listed first
             let mut client_references_by_server_component =
                 FxIndexMap::from_iter([(None, Vec::new())]);
 
-            graph.traverse_edges_from_entry_topological(
-                entry,
+            graph.traverse_edges_from_entries_topological(
+                entries,
                 // state_map is `module -> Option< the current so parent server component >`
                 &mut HashMap::new(),
-                |(parent_node, node), state_map| {
-                    let module = node.module;
-                    let Some(parent_node) = parent_node else {
-                        state_map.insert(module, None);
-                        return GraphTraversalAction::Continue;
-                    };
+                |parent_info, node, state_map| {
                     let module = node.module;
                     let module_type = data.get(&module);
 
@@ -376,8 +312,11 @@ impl ClientReferencesGraph {
                     ) = module_type
                     {
                         Some(*module)
-                    } else {
+                    } else if let Some((parent_node, _)) = parent_info {
                         *state_map.get(&parent_node.module).unwrap()
+                    } else {
+                        // a root node
+                        None
                     };
 
                     state_map.insert(module, current_server_component);
@@ -390,8 +329,8 @@ impl ClientReferencesGraph {
                         _ => GraphTraversalAction::Continue,
                     }
                 },
-                |(parent_node, node), state_map| {
-                    let Some(parent_node) = parent_node else {
+                |parent_info, node, state_map| {
+                    let Some((parent_node, _)) = parent_info else {
                         return;
                     };
                     let parent_module = parent_node.module;
@@ -577,33 +516,13 @@ impl ReducedGraphs {
 
 #[turbo_tasks::function(operation)]
 async fn get_reduced_graphs_for_endpoint_inner_operation(
-    project: ResolvedVc<Project>,
-    entry: ResolvedVc<Box<dyn Module>>,
+    module_graph: ResolvedVc<ModuleGraph>,
+    is_single_page: bool,
 ) -> Result<Vc<ReducedGraphs>> {
-    let (is_single_page, graphs) = match &*project.next_mode().await? {
-        NextMode::Development => (
-            true,
-            async move { get_module_graph_for_endpoint(*entry).await }
-                .instrument(tracing::info_span!("module graph for endpoint"))
-                .await?
-                .clone_value(),
-        ),
-        NextMode::Build => (
-            false,
-            vec![
-                async move {
-                    SingleModuleGraph::new_with_entries(project.get_all_entries())
-                        .to_resolved()
-                        .await
-                }
-                .instrument(tracing::info_span!("module graph for app"))
-                .await?,
-            ],
-        ),
-    };
-
+    let module_graph = module_graph.await?;
     let next_dynamic = async {
-        graphs
+        module_graph
+            .graphs
             .iter()
             .map(|graph| NextDynamicGraph::new_with_entries(**graph, is_single_page).to_resolved())
             .try_join()
@@ -613,7 +532,8 @@ async fn get_reduced_graphs_for_endpoint_inner_operation(
     .await?;
 
     let server_actions = async {
-        graphs
+        module_graph
+            .graphs
             .iter()
             .map(|graph| {
                 ServerActionsGraph::new_with_entries(**graph, is_single_page).to_resolved()
@@ -625,7 +545,8 @@ async fn get_reduced_graphs_for_endpoint_inner_operation(
     .await?;
 
     let client_references = async {
-        graphs
+        module_graph
+            .graphs
             .iter()
             .map(|graph| {
                 ClientReferencesGraph::new_with_entries(**graph, is_single_page).to_resolved()
@@ -649,14 +570,14 @@ async fn get_reduced_graphs_for_endpoint_inner_operation(
 /// references, etc).
 #[turbo_tasks::function]
 pub async fn get_reduced_graphs_for_endpoint(
-    project: ResolvedVc<Project>,
-    entry: ResolvedVc<Box<dyn Module>>,
+    module_graph: ResolvedVc<ModuleGraph>,
+    is_single_page: bool,
 ) -> Result<Vc<ReducedGraphs>> {
     // TODO get rid of this function once everything inside of
     // `get_reduced_graphs_for_endpoint_inner` calls `take_collectibles()` when needed
-    let result_op = get_reduced_graphs_for_endpoint_inner_operation(project, entry);
+    let result_op = get_reduced_graphs_for_endpoint_inner_operation(module_graph, is_single_page);
     let result_vc = result_op.connect();
-    if project.next_mode().await?.is_production() {
+    if !is_single_page {
         result_vc.strongly_consistent().await?;
         let _issues = result_op.take_collectibles::<Box<dyn Issue>>();
     }
