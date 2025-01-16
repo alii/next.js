@@ -1,7 +1,14 @@
 import * as nextEnv from '@next/env'
 import { join } from 'node:path'
 import type { ParsedUrlQuery } from 'querystring'
-import { ROUTES_MANIFEST } from '../api/constants'
+import {
+  APP_PATHS_MANIFEST,
+  CLIENT_PUBLIC_FILES_PATH,
+  MIDDLEWARE_MANIFEST,
+  NEXT_FONT_MANIFEST,
+  PRERENDER_MANIFEST,
+  ROUTES_MANIFEST,
+} from '../api/constants'
 import type { PrerenderManifest } from '../build'
 import * as Log from '../build/output/log'
 import type { MiddlewareManifest } from '../build/webpack/plugins/middleware-plugin'
@@ -19,7 +26,7 @@ import {
   type AppSharedContext,
   renderToHTMLOrFlight,
 } from './app-render/app-render'
-import type { BunNextRequest, BunNextResponse } from './base-http/bun'
+import { BunNextRequest, BunNextResponse } from './base-http/bun'
 import BaseServer, {
   type FindComponentsResult,
   type LoadedRenderOpts,
@@ -62,12 +69,30 @@ export interface BunNextServerOptions {
   distDir: string
   buildId: string
   publicDir: string
-  appPathsManifest: PagesManifest
-  nextFontManifest: NextFontManifest
-  middlewareManifest: MiddlewareManifest
-  prerenderManifest: PrerenderManifest
-  appSharedContext: AppSharedContext
+  appPathsManifest: PagesManifest | DeepReadonly<PagesManifest>
+  nextFontManifest: NextFontManifest | DeepReadonly<NextFontManifest>
+  middlewareManifest: MiddlewareManifest | DeepReadonly<MiddlewareManifest>
+  prerenderManifest: PrerenderManifest | DeepReadonly<PrerenderManifest>
+  appSharedContext: AppSharedContext | DeepReadonly<AppSharedContext>
   interceptionRouteRewrites: Rewrite[]
+}
+
+// cheap type definitions for Bun
+// because installing bun-types causes a lot of issues
+// elsewhere around the codebase. proper solution is
+// a really huge refactor
+declare const Bun: {
+  serve: (options: {
+    port: number
+    hostname: string
+    static: Record<string, string>
+    fetch: (request: Request) => Promise<Response>
+  }) => {
+    url: string
+  }
+  file: (path: string) => {
+    text: () => Promise<string>
+  }
 }
 
 export class BunNextServer extends BaseServer<
@@ -79,6 +104,78 @@ export class BunNextServer extends BaseServer<
     MiddlewareManifest['middleware'][string],
     MiddlewareRouteMatch
   >()
+
+  public static async start({
+    conf,
+    dir,
+    port,
+    hostname,
+    staticAssets = {},
+  }: {
+    conf: NextConfig
+    /**
+     * The directory where server.js exists and also the .next folder
+     */
+    dir: string
+    port: number
+    hostname: string
+    staticAssets?: {}
+  }) {
+    const BUILD_ID = await Bun.file(join(dir, '.next', 'BUILD_ID')).text()
+
+    const appPathsManifest = loadManifest<PagesManifest>(
+      join(dir, '.next', 'server', APP_PATHS_MANIFEST)
+    )
+    const nextFontManifest = loadManifest<NextFontManifest>(
+      join(dir, '.next', 'server', NEXT_FONT_MANIFEST)
+    )
+    const middlewareManifest = loadManifest<MiddlewareManifest>(
+      join(dir, '.next', 'server', MIDDLEWARE_MANIFEST)
+    )
+
+    const prerenderManifest = loadManifest<PrerenderManifest>(
+      join(dir, '.next', PRERENDER_MANIFEST)
+    )
+
+    const server = new BunNextServer({
+      conf,
+      distDir: join(dir, '.next'),
+      buildId: BUILD_ID,
+      publicDir: CLIENT_PUBLIC_FILES_PATH,
+
+      appPathsManifest,
+      nextFontManifest,
+      middlewareManifest,
+      prerenderManifest,
+
+      interceptionRouteRewrites: [],
+
+      appSharedContext: {
+        buildId: BUILD_ID,
+      },
+    })
+
+    const handler = server.getRequestHandler()
+
+    const bunServer = Bun.serve({
+      port,
+      hostname,
+      static: staticAssets,
+
+      fetch: async (rawRequest) => {
+        const url = new URL(rawRequest.url)
+
+        const request = new BunNextRequest(url, rawRequest)
+        const response = new BunNextResponse()
+
+        await handler(request, response)
+
+        return response.toResponse()
+      },
+    })
+
+    return bunServer
+  }
 
   private static getMiddlewareMatcher(
     info: MiddlewareManifest['middleware'][string]
@@ -331,7 +428,9 @@ export class BunNextServer extends BaseServer<
     }
 
     return {
-      match: BunNextServer.getMiddlewareMatcher(middleware),
+      match: BunNextServer.getMiddlewareMatcher(
+        middleware as MiddlewareManifest['middleware'][string]
+      ),
       page: '/',
     }
   }

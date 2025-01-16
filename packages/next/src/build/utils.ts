@@ -1466,7 +1466,37 @@ export function getServerOutputContent(options: {
   nextConfig: NextConfigComplete
 }) {
   if (options.output === 'bun') {
-    return 'TODO'
+    return `
+
+import {BunNextServer} from 'next/dist/server/bun-server';
+
+import * as path from 'node:path'
+import { fileURLToPath } from 'node:url'
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
+
+process.env.NODE_ENV = 'production'
+process.chdir(__dirname)
+
+const currentPort = parseInt(process.env.PORT, 10) || 3000
+const hostname = process.env.HOSTNAME || '0.0.0.0'
+
+const nextConfig = ${JSON.stringify(options.nextConfig)}
+
+process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(nextConfig)
+
+import 'next';
+
+const server = await BunNextServer.start({
+  conf: nextConfig,
+  dir: __dirname,
+  port: currentPort,
+  hostname: hostname,
+  staticAssets: {},
+})
+
+console.log(server.url)
+
+    `.trim()
   } else {
     return `${
       options.isModule
