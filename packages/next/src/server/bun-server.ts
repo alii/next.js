@@ -124,17 +124,17 @@ export class BunNextServer extends BaseServer<
     const BUILD_ID = await Bun.file(join(dir, '.next', 'BUILD_ID')).text()
 
     const appPathsManifest = loadManifest<PagesManifest>(
-      join(dir, '.next', 'server', APP_PATHS_MANIFEST + '.json')
+      join(dir, '.next', 'server', APP_PATHS_MANIFEST)
     )
     const nextFontManifest = loadManifest<NextFontManifest>(
-      join(dir, '.next', 'server', NEXT_FONT_MANIFEST + '.json')
+      join(dir, '.next', 'server', NEXT_FONT_MANIFEST + '.json') // for some reason this is the only one that needs the .json
     )
     const middlewareManifest = loadManifest<MiddlewareManifest>(
-      join(dir, '.next', 'server', MIDDLEWARE_MANIFEST + '.json')
+      join(dir, '.next', 'server', MIDDLEWARE_MANIFEST)
     )
 
     const prerenderManifest = loadManifest<PrerenderManifest>(
-      join(dir, '.next', PRERENDER_MANIFEST + '.json')
+      join(dir, '.next', PRERENDER_MANIFEST)
     )
 
     const server = new BunNextServer({
