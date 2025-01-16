@@ -1467,10 +1467,10 @@ export function getServerOutputContent(options: {
 }) {
   if (options.output === 'bun') {
     return `
+globalThis.AsyncLocalStorage = require('node:async_hooks').AsyncLocalStorage
 
-import {BunNextServer} from 'next/dist/server/bun-server';
-
-import * as path from 'node:path'
+import 'next'
+import {BunNextServer} from 'next/dist/server/bun-server'
 import { fileURLToPath } from 'node:url'
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
@@ -1484,14 +1484,11 @@ const nextConfig = ${JSON.stringify(options.nextConfig)}
 
 process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(nextConfig)
 
-import 'next';
-
 const server = await BunNextServer.start({
   conf: nextConfig,
   dir: __dirname,
   port: currentPort,
   hostname: hostname,
-  staticAssets: {},
 })
 
 console.log(server.url)

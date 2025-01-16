@@ -669,7 +669,44 @@ async function writeStandaloneDirectory(
           )
         }
       }
+
+      if (output === 'bun') {
+        await copyDotNextSlashStaticToBun(distDir)
+        await copyPublicToBun(distDir)
+      }
     })
+}
+
+/*
+/
+  .next/
+    static/
+      ...
+    bun/
+      server.js
+      .next
+        server/
+          ...
+  public/
+    ...
+
+
+We need to copy the static folder to /.next/bun/.next/static
+and the public folder to /.next/bun/public
+*/
+
+async function copyDotNextSlashStaticToBun(distDir: string) {
+  await recursiveCopy(
+    path.join(distDir, 'static'),
+    path.join(distDir, 'bun', '.next', 'static')
+  )
+}
+
+async function copyPublicToBun(distDir: string) {
+  await recursiveCopy(
+    path.join(distDir, '..', 'public'),
+    path.join(distDir, 'bun', 'public')
+  )
 }
 
 function getNumberOfWorkers(config: NextConfigComplete) {

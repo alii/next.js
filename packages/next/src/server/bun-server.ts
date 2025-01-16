@@ -67,8 +67,9 @@ export interface BunNextServerOptions {
    * Must be an absolute path
    */
   distDir: string
-  buildId: string
   publicDir: string
+
+  buildId: string
   appPathsManifest: PagesManifest | DeepReadonly<PagesManifest>
   nextFontManifest: NextFontManifest | DeepReadonly<NextFontManifest>
   middlewareManifest: MiddlewareManifest | DeepReadonly<MiddlewareManifest>
@@ -81,17 +82,28 @@ export interface BunNextServerOptions {
 // because installing bun-types causes a lot of issues
 // elsewhere around the codebase. proper solution is
 // a really huge refactor
-declare const Bun: {
-  serve: (options: {
+declare namespace Bun {
+  export interface ServeOptions {
     port: number
     hostname: string
     static: Record<string, Response>
     fetch: (request: Request) => Promise<Response>
-  }) => {
-    url: string
   }
-  file: (path: string) => {
-    text: () => Promise<string>
+
+  export interface Glob {
+    scan(options: { dot: boolean; cwd: string }): AsyncIterable<string>
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+declare const Bun: {
+  serve: (options: Bun.ServeOptions) => {
+    url: URL
+    reload: (options: Bun.ServeOptions) => void
+  }
+  file: (path: string) => Blob
+  Glob: {
+    new (pattern: string): Bun.Glob
   }
 }
 
@@ -105,30 +117,78 @@ export class BunNextServer extends BaseServer<
     MiddlewareRouteMatch
   >()
 
+  private async collectStaticAssets(): Promise<Record<`/${string}`, Response>> {
+    const staticAssets: Record<`/${string}`, Response> = {}
+
+    async function glob(
+      cwd: string,
+      pattern: string,
+      mapPath: (path: string) => string
+    ) {
+      const scan = new Bun.Glob(pattern).scan({ dot: true, cwd })
+
+      const paths = await Array.fromAsync(scan)
+
+      return paths.map((path) => {
+        const withoutDotSlash = path.startsWith('./') ? path.slice(1) : path
+
+        return [
+          Bun.file(join(cwd, withoutDotSlash)),
+          mapPath(withoutDotSlash),
+        ] as const
+      })
+    }
+
+    const [publicFiles, assets] = await Promise.all([
+      glob(this.serverOptions.publicDir, './**/*', (path) => path),
+
+      glob(
+        this.serverOptions.distDir,
+        './static/**/*',
+        (path) => '/_next' + path
+      ),
+    ])
+
+    for await (const [blob, path] of [...publicFiles, ...assets]) {
+      const buf = await blob.arrayBuffer()
+
+      staticAssets[path as `/${string}`] = new Response(buf, {
+        headers: {
+          'Content-Type': blob.type,
+        },
+      })
+    }
+
+    console.log({ staticAssets })
+
+    return staticAssets
+  }
+
   public static async start({
     conf,
     dir,
     port,
     hostname,
-    staticAssets = {},
   }: {
     conf: NextConfig
     /**
-     * The directory where server.js exists and also the .next folder
+     * The directory where server.js exists
+     * (Usually like `/Users/username/my-app/.next/bun`)
      */
     dir: string
     port: number
     hostname: string
-    staticAssets?: Record<`/${string}`, Response>
   }) {
     const BUILD_ID = await Bun.file(join(dir, '.next', 'BUILD_ID')).text()
 
     const appPathsManifest = loadManifest<PagesManifest>(
       join(dir, '.next', 'server', APP_PATHS_MANIFEST)
     )
+
     const nextFontManifest = loadManifest<NextFontManifest>(
-      join(dir, '.next', 'server', NEXT_FONT_MANIFEST + '.json') // for some reason this is the only one that needs the .json
+      join(dir, '.next', 'server', NEXT_FONT_MANIFEST + '.json') // needs .json, all the others have it
     )
+
     const middlewareManifest = loadManifest<MiddlewareManifest>(
       join(dir, '.next', 'server', MIDDLEWARE_MANIFEST)
     )
@@ -140,8 +200,9 @@ export class BunNextServer extends BaseServer<
     const server = new BunNextServer({
       conf,
       distDir: join(dir, '.next'),
+
       buildId: BUILD_ID,
-      publicDir: CLIENT_PUBLIC_FILES_PATH,
+      publicDir: join(dir, CLIENT_PUBLIC_FILES_PATH),
 
       appPathsManifest,
       nextFontManifest,
@@ -156,6 +217,7 @@ export class BunNextServer extends BaseServer<
     })
 
     const handler = server.getRequestHandler()
+    const staticAssets = await server.collectStaticAssets()
 
     const bunServer = Bun.serve({
       port,
@@ -163,9 +225,11 @@ export class BunNextServer extends BaseServer<
       static: staticAssets,
 
       fetch: async (rawRequest) => {
-        const url = new URL(rawRequest.url)
+        // const url = new URL(rawRequest.url)
 
-        const request = new BunNextRequest(url, rawRequest)
+        // return server.fastHandle(new BunNextRequest(url, rawRequest))
+
+        const request = new BunNextRequest(new URL(rawRequest.url), rawRequest)
         const response = new BunNextResponse()
 
         await handler(request, response)
@@ -304,8 +368,6 @@ export class BunNextServer extends BaseServer<
       expireTime: ExpireTime | undefined
     }
   ): Promise<void> {
-    console.log('sendRenderResult', options.poweredByHeader)
-
     res.setHeader('X-Edge-Runtime', '1')
 
     // Add necessary headers.
@@ -467,6 +529,54 @@ export class BunNextServer extends BaseServer<
     return { ...manifest, rewrites }
   }
 
+  public async fastHandle(request: BunNextRequest) {
+    await this.matchers.waitTillReady()
+
+    const match = await this.matchers.match(request.actualUrl.pathname, {})
+
+    if (!match) {
+      return new Response('Not found', {
+        status: 404,
+      })
+    }
+
+    const query = Object.fromEntries(request.actualUrl.searchParams.entries())
+
+    const components = await this.findPageComponents({
+      page: match.definition.page,
+      query,
+      params: match.params ?? {},
+      isAppPath: true,
+      sriEnabled: false,
+    })
+
+    if (!components) {
+      return new Response('Not found', {
+        status: 404,
+      })
+    }
+
+    const res = new BunNextResponse()
+
+    await this.renderHTML(
+      request,
+      res,
+      request.actualUrl.pathname,
+      components.query,
+      {
+        ...components.components,
+        ...this.renderOpts,
+        onClose: (cb) => res.onClose(cb),
+        waitUntil: () => Promise.resolve(),
+        onAfterTaskError: (err) => {
+          console.error(err)
+        },
+      }
+    )
+
+    return res.toResponse()
+  }
+
   protected async renderHTML(
     req: BunNextRequest,
     res: BunNextResponse,
@@ -543,11 +653,15 @@ export class BunNextServer extends BaseServer<
 
     const bubbleNoFallback = getRequestMeta(req, 'bubbleNoFallback')
 
+    console.log('handle request')
+
     try {
       await this.render(req, res, pathname, query, parsedUrl, true)
 
       return true
     } catch (err) {
+      console.log(err)
+
       if (err instanceof NoFallbackError && bubbleNoFallback) {
         return false
       }

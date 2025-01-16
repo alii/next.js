@@ -1,40 +1,34 @@
-import type { FsOutput } from './filesystem'
 import type { IncomingMessage, ServerResponse } from 'http'
-import type { NextConfigComplete } from '../../config-shared'
-import type { RenderServer, initialize } from '../router-server'
+import type { UnwrapPromise } from '../../../lib/coalesced-function'
+import type { Header, Rewrite } from '../../../lib/load-custom-routes'
 import type { PatchMatcher } from '../../../shared/lib/router/utils/path-match'
 import type { Redirect } from '../../../types'
-import type { Header, Rewrite } from '../../../lib/load-custom-routes'
-import type { UnwrapPromise } from '../../../lib/coalesced-function'
+import type { NextConfigComplete } from '../../config-shared'
 import type { NextUrlWithParsedQuery } from '../../request-meta'
+import type { RenderServer, initialize } from '../router-server'
+import type { FsOutput } from './filesystem'
 
-import url from 'url'
-import path from 'node:path'
 import setupDebug from 'next/dist/compiled/debug'
-import { getCloneableBody } from '../../body-streams'
-import { filterReqHeaders, ipcForbiddenHeaders } from '../server-ipc/utils'
-import { stringifyQuery } from '../../server-route-utils'
-import { formatHostname } from '../format-hostname'
-import { toNodeOutgoingHttpHeaders } from '../../web/utils'
-import { isAbortError } from '../../pipe-readable'
-import { getHostname } from '../../../shared/lib/get-hostname'
+import path from 'node:path'
+import url from 'url'
 import { getRedirectStatus } from '../../../lib/redirect-status'
-import { normalizeRepeatedSlashes } from '../../../shared/lib/utils'
-import { getRelativeURL } from '../../../shared/lib/router/utils/relativize-url'
-import { addPathPrefix } from '../../../shared/lib/router/utils/add-path-prefix'
-import { pathHasPrefix } from '../../../shared/lib/router/utils/path-has-prefix'
+import { getHostname } from '../../../shared/lib/get-hostname'
 import { detectDomainLocale } from '../../../shared/lib/i18n/detect-domain-locale'
 import { normalizeLocalePath } from '../../../shared/lib/i18n/normalize-locale-path'
+import { addPathPrefix } from '../../../shared/lib/router/utils/add-path-prefix'
+import { pathHasPrefix } from '../../../shared/lib/router/utils/path-has-prefix'
+import { getRelativeURL } from '../../../shared/lib/router/utils/relativize-url'
 import { removePathPrefix } from '../../../shared/lib/router/utils/remove-path-prefix'
-import { NextDataPathnameNormalizer } from '../../normalizers/request/next-data'
+import { normalizeRepeatedSlashes } from '../../../shared/lib/utils'
+import { getCloneableBody } from '../../body-streams'
 import { BasePathPathnameNormalizer } from '../../normalizers/request/base-path'
+import { NextDataPathnameNormalizer } from '../../normalizers/request/next-data'
+import { isAbortError } from '../../pipe-readable'
+import { stringifyQuery } from '../../server-route-utils'
+import { toNodeOutgoingHttpHeaders } from '../../web/utils'
+import { formatHostname } from '../format-hostname'
+import { filterReqHeaders, ipcForbiddenHeaders } from '../server-ipc/utils'
 
-import { addRequestMeta } from '../../request-meta'
-import {
-  compileNonPath,
-  matchHas,
-  prepareDestination,
-} from '../../../shared/lib/router/utils/prepare-destination'
 import type { TLSSocket } from 'tls'
 import {
   NEXT_REWRITTEN_PATH_HEADER,
@@ -44,8 +38,14 @@ import {
 } from '../../../client/components/app-router-headers'
 import { getSelectedParams } from '../../../client/components/router-reducer/compute-changed-path'
 import { isInterceptionRouteRewrite } from '../../../lib/generate-interception-routes-rewrites'
-import { parseAndValidateFlightRouterState } from '../../app-render/parse-and-validate-flight-router-state'
 import { parseUrl } from '../../../shared/lib/router/utils/parse-url'
+import {
+  compileNonPath,
+  matchHas,
+  prepareDestination,
+} from '../../../shared/lib/router/utils/prepare-destination'
+import { parseAndValidateFlightRouterState } from '../../app-render/parse-and-validate-flight-router-state'
+import { addRequestMeta } from '../../request-meta'
 
 const debug = setupDebug('next:router-server:resolve-routes')
 

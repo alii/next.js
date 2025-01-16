@@ -10,10 +10,13 @@ export class BunNextRequest extends BaseNextRequest<ReadableStream<Uint8Array> |
 
   public fetchMetrics: FetchMetric[] | undefined
 
+  public readonly actualUrl: URL
+
   constructor(url: URL, request: Request) {
     super(request.method, request.url, request.body)
     this.request = request
     this.url = url.pathname
+    this.actualUrl = url
   }
 
   public get headers() {
