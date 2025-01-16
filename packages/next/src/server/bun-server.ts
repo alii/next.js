@@ -529,53 +529,53 @@ export class BunNextServer extends BaseServer<
     return { ...manifest, rewrites }
   }
 
-  public async fastHandle(request: BunNextRequest) {
-    await this.matchers.waitTillReady()
+  // public async fastHandle(request: BunNextRequest) {
+  //   await this.matchers.waitTillReady()
 
-    const match = await this.matchers.match(request.actualUrl.pathname, {})
+  //   const match = await this.matchers.match(request.actualUrl.pathname, {})
 
-    if (!match) {
-      return new Response('Not found', {
-        status: 404,
-      })
-    }
+  //   if (!match) {
+  //     return new Response('Not found', {
+  //       status: 404,
+  //     })
+  //   }
 
-    const query = Object.fromEntries(request.actualUrl.searchParams.entries())
+  //   const query = Object.fromEntries(request.actualUrl.searchParams.entries())
 
-    const components = await this.findPageComponents({
-      page: match.definition.page,
-      query,
-      params: match.params ?? {},
-      isAppPath: true,
-      sriEnabled: false,
-    })
+  //   const components = await this.findPageComponents({
+  //     page: match.definition.page,
+  //     query,
+  //     params: match.params ?? {},
+  //     isAppPath: true,
+  //     sriEnabled: false,
+  //   })
 
-    if (!components) {
-      return new Response('Not found', {
-        status: 404,
-      })
-    }
+  //   if (!components) {
+  //     return new Response('Not found', {
+  //       status: 404,
+  //     })
+  //   }
 
-    const res = new BunNextResponse()
+  //   const res = new BunNextResponse()
 
-    await this.renderHTML(
-      request,
-      res,
-      request.actualUrl.pathname,
-      components.query,
-      {
-        ...components.components,
-        ...this.renderOpts,
-        onClose: (cb) => res.onClose(cb),
-        waitUntil: () => Promise.resolve(),
-        onAfterTaskError: (err) => {
-          console.error(err)
-        },
-      }
-    )
+  //   await this.renderHTML(
+  //     request,
+  //     res,
+  //     request.actualUrl.pathname,
+  //     components.query,
+  //     {
+  //       ...components.components,
+  //       ...this.renderOpts,
+  //       onClose: (cb) => res.onClose(cb),
+  //       waitUntil: () => Promise.resolve(),
+  //       onAfterTaskError: (err) => {
+  //         console.error(err)
+  //       },
+  //     }
+  //   )
 
-    return res.toResponse()
-  }
+  //   return res.toResponse()
+  // }
 
   protected async renderHTML(
     req: BunNextRequest,
