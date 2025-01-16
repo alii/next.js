@@ -85,7 +85,7 @@ declare const Bun: {
   serve: (options: {
     port: number
     hostname: string
-    static: Record<string, string>
+    static: Record<string, Response>
     fetch: (request: Request) => Promise<Response>
   }) => {
     url: string
@@ -119,7 +119,7 @@ export class BunNextServer extends BaseServer<
     dir: string
     port: number
     hostname: string
-    staticAssets?: {}
+    staticAssets?: Record<`/${string}`, Response>
   }) {
     const BUILD_ID = await Bun.file(join(dir, '.next', 'BUILD_ID')).text()
 
