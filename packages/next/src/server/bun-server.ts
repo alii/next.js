@@ -78,12 +78,6 @@ export interface BunNextServerOptions {
   interceptionRouteRewrites: Rewrite[]
 }
 
-type ServeInstance = typeof globalThis extends {
-  Bun: infer Bun extends { serve(...args: any): any }
-}
-  ? ReturnType<Bun['serve']>
-  : unknown
-
 // cheap type definitions for Bun
 // because installing bun-types causes a lot of issues
 // elsewhere around the codebase. proper solution is
@@ -103,7 +97,10 @@ declare namespace Bun {
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 declare const Bun: {
-  serve: (options: Bun.ServeOptions) => ServeInstance
+  serve: (options: Bun.ServeOptions) => {
+    url: URL
+    reload: (options: Bun.ServeOptions) => void
+  }
   file: (path: string) => Blob
   Glob: {
     new (pattern: string): Bun.Glob
