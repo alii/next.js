@@ -74,7 +74,7 @@ import { parseParameter } from '../../shared/lib/router/utils/route-regex'
 import { PAGE_SEGMENT_KEY } from '../../shared/lib/segment'
 import { createRequestStoreForRender } from '../async-storage/request-store'
 import { createWorkStore } from '../async-storage/work-store'
-import { isBun, isNodeNextRequest } from '../base-http/helpers'
+import { isBunNextRequest, isNodeNextRequest } from '../base-http/helpers'
 import {
   getClientComponentLoaderMetrics,
   wrapClientComponentLoader,
@@ -1156,7 +1156,7 @@ async function renderToHTMLOrFlightImpl(
     // environment variable check provides dead code elimination.
     process.env.NEXT_RUNTIME !== 'edge' &&
     isNodeNextRequest(req) &&
-    !isBun
+    !isBunNextRequest(req)
   ) {
     req.originalRequest.on('end', () => {
       requestEndedState.ended = true

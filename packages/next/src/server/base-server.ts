@@ -114,7 +114,11 @@ import {
 } from './after/builtin-request-context'
 import { checkIsOnDemandRevalidate } from './api-utils'
 import { stripFlightHeaders } from './app-render/strip-flight-headers'
-import { isNodeNextRequest, isNodeNextResponse } from './base-http/helpers'
+import {
+  isBunNextResponse,
+  isNodeNextRequest,
+  isNodeNextResponse,
+} from './base-http/helpers'
 import { getRevalidateReason } from './instrumentation/utils'
 import { checkIsAppPPREnabled } from './lib/experimental/ppr'
 import { formatHostname } from './lib/format-hostname'
@@ -166,8 +170,8 @@ import { sendResponse } from './send-response'
 import { getUtils } from './server-utils'
 import { ENCODED_TAGS } from './stream-utils/encodedTags'
 import { isBlockedPage } from './utils'
+import type NextWebServer from './web-server'
 import { NextRequestHint } from './web/adapter'
-import type { NextRequest } from './web/exports'
 import {
   NextRequestAdapter,
   signalFromNodeResponse,
@@ -2379,6 +2383,7 @@ export default abstract class Server<
           delete origQuery[key]
         })
       }
+
       const hadTrailingSlash =
         urlPathname !== '/' && this.nextConfig.trailingSlash
 
@@ -2457,7 +2462,8 @@ export default abstract class Server<
             // environment variable check provides dead code elimination.
             process.env.NEXT_RUNTIME === 'edge' ||
             !isNodeNextRequest(req) ||
-            !isNodeNextResponse(res)
+            !isNodeNextResponse(res) ||
+            isBunNextResponse(res)
           ) {
             throw new Error(
               'Invariant: App Route Route Modules cannot be used in the edge runtime'
@@ -2488,13 +2494,10 @@ export default abstract class Server<
           }
 
           try {
-            const request =
-              'toNextRequest' in req
-                ? (req as { toNextRequest(): NextRequest }).toNextRequest()
-                : NextRequestAdapter.fromNodeNextRequest(
-                    req,
-                    signalFromNodeResponse(res.originalResponse)
-                  )
+            const request = NextRequestAdapter.fromNodeNextRequest(
+              req,
+              signalFromNodeResponse(res.originalResponse)
+            )
 
             const response = await routeModule.handle(request, context)
 
@@ -3717,10 +3720,10 @@ export default abstract class Server<
       // header so we need to fallback to matching the current page
       // when we weren't able to match via dynamic route to handle
       // the rewrite case
-      // @ts-expect-error extended in child class web-server
-      if (this.serverOptions.webServerConfig) {
-        // @ts-expect-error extended in child class web-server
-        ctx.pathname = this.serverOptions.webServerConfig.page
+      if ((this as unknown as NextWebServer).serverOptions.webServerConfig) {
+        ctx.pathname = (
+          this as unknown as NextWebServer
+        ).serverOptions.webServerConfig.page
         const result = await this.renderPageComponent(ctx, bubbleNoFallback)
         if (result !== false) return result
       }

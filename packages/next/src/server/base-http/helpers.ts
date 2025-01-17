@@ -49,9 +49,6 @@ export const isNodeNextResponse = (
   res: BaseNextResponse
 ): res is NodeNextResponse => process.env.NEXT_RUNTIME !== 'edge'
 
-declare const Bun: unknown
-export const isBun = typeof Bun !== 'undefined'
-
 export const isBunNextRequest = (req: BaseNextRequest): req is BunNextRequest =>
   req instanceof BunNextRequest
 
