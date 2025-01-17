@@ -1,13 +1,62 @@
 import type { IncomingMessage, ServerResponse } from 'http'
+import stripAnsi from 'next/dist/compiled/strip-ansi'
+import ReactDOMServerPages from 'next/dist/server/ReactDOMServerPages'
 import type { ParsedUrlQuery } from 'querystring'
+import React, { type JSX } from 'react'
+import { StyleRegistry, createStyleRegistry } from 'styled-jsx'
 import type { ClientReferenceManifest } from '../build/webpack/plugins/flight-manifest-plugin'
 import type { NextFontManifest } from '../build/webpack/plugins/next-font-manifest-plugin'
+import type { ReactDevOverlayType } from '../client/components/react-dev-overlay/pages/react-dev-overlay'
 import type { UnwrapPromise } from '../lib/coalesced-function'
+import {
+  GSP_NO_RETURNED_VALUE,
+  GSSP_COMPONENT_MEMBER_ERROR,
+  GSSP_NO_RETURNED_VALUE,
+  SERVER_PROPS_GET_INIT_PROPS_CONFLICT,
+  SERVER_PROPS_SSG_CONFLICT,
+  SSG_GET_INITIAL_PROPS_CONFLICT,
+  STATIC_STATUS_PAGE_GET_INITIAL_PROPS_ERROR,
+  UNSTABLE_REVALIDATE_RENAME_ERROR,
+} from '../lib/constants'
+import isError from '../lib/is-error'
+import { isSerializableProps } from '../lib/is-serializable-props'
 import type { Redirect } from '../lib/load-custom-routes'
+import { allowedStatusCodes, getRedirectStatus } from '../lib/redirect-status'
+import { AmpStateContext } from '../shared/lib/amp-context.shared-runtime'
+import { isInAmpMode } from '../shared/lib/amp-mode'
+import { AppRouterContext } from '../shared/lib/app-router-context.shared-runtime'
 import type { COMPILER_NAMES } from '../shared/lib/constants'
+import {
+  NEXT_BUILTIN_DOCUMENT,
+  SERVER_PROPS_ID,
+  STATIC_PROPS_ID,
+  STATIC_STATUS_PAGES,
+} from '../shared/lib/constants'
+import type { DeepReadonly } from '../shared/lib/deep-readonly'
+import { getErrorSource } from '../shared/lib/error-source'
+import { defaultHead } from '../shared/lib/head'
+import { HeadManagerContext } from '../shared/lib/head-manager-context.shared-runtime'
+import {
+  PathParamsContext,
+  SearchParamsContext,
+} from '../shared/lib/hooks-client-context.shared-runtime'
 import type { HtmlProps } from '../shared/lib/html-context.shared-runtime'
+import { HtmlContext } from '../shared/lib/html-context.shared-runtime'
 import type { ImageConfigComplete } from '../shared/lib/image-config'
+import { ImageConfigContext } from '../shared/lib/image-config-context.shared-runtime'
+import { LoadableContext } from '../shared/lib/loadable-context.shared-runtime'
+import Loadable from '../shared/lib/loadable.shared-runtime'
+import { denormalizePagePath } from '../shared/lib/page-path/denormalize-page-path'
+import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
+import { RouterContext } from '../shared/lib/router-context.shared-runtime'
+import {
+  PathnameContextProviderAdapter,
+  adaptForAppRouterInstance,
+  adaptForPathParams,
+  adaptForSearchParams,
+} from '../shared/lib/router/adapters'
 import type { NextRouter } from '../shared/lib/router/router'
+import { isDynamicRoute } from '../shared/lib/router/utils/is-dynamic'
 import type {
   AppType,
   ComponentsEnhancer,
@@ -18,6 +67,11 @@ import type {
   NextComponentType,
   RenderPage,
   RenderPageResult,
+} from '../shared/lib/utils'
+import {
+  getDisplayName,
+  isResSent,
+  loadGetInitialProps,
 } from '../shared/lib/utils'
 import type {
   GetServerSideProps,
@@ -33,72 +87,17 @@ import {
 } from './api-utils'
 import { getCookieParser } from './api-utils/get-cookie-parser'
 import type { DomainLocale } from './config'
-import type { ExpireTime, Revalidate } from './lib/revalidate'
-import type { LoadComponentsReturnType } from './load-components'
-import type { NextParsedUrlQuery } from './request-meta'
-import type { PagesModule } from './route-modules/pages/module'
-import type { ReactReadableStream } from './stream-utils/node-web-streams-helper'
-
-import stripAnsi from 'next/dist/compiled/strip-ansi'
-import ReactDOMServerPages from 'next/dist/server/ReactDOMServerPages'
-import React, { type JSX } from 'react'
-import { StyleRegistry, createStyleRegistry } from 'styled-jsx'
-import type { ReactDevOverlayType } from '../client/components/react-dev-overlay/pages/ReactDevOverlay'
-import {
-  GSP_NO_RETURNED_VALUE,
-  GSSP_COMPONENT_MEMBER_ERROR,
-  GSSP_NO_RETURNED_VALUE,
-  SERVER_PROPS_GET_INIT_PROPS_CONFLICT,
-  SERVER_PROPS_SSG_CONFLICT,
-  SSG_GET_INITIAL_PROPS_CONFLICT,
-  STATIC_STATUS_PAGE_GET_INITIAL_PROPS_ERROR,
-  UNSTABLE_REVALIDATE_RENAME_ERROR,
-} from '../lib/constants'
-import isError from '../lib/is-error'
-import { isSerializableProps } from '../lib/is-serializable-props'
-import { allowedStatusCodes, getRedirectStatus } from '../lib/redirect-status'
-import { AmpStateContext } from '../shared/lib/amp-context.shared-runtime'
-import { isInAmpMode } from '../shared/lib/amp-mode'
-import { AppRouterContext } from '../shared/lib/app-router-context.shared-runtime'
-import {
-  NEXT_BUILTIN_DOCUMENT,
-  SERVER_PROPS_ID,
-  STATIC_PROPS_ID,
-  STATIC_STATUS_PAGES,
-} from '../shared/lib/constants'
-import type { DeepReadonly } from '../shared/lib/deep-readonly'
-import { getErrorSource } from '../shared/lib/error-source'
-import { defaultHead } from '../shared/lib/head'
-import { HeadManagerContext } from '../shared/lib/head-manager-context.shared-runtime'
-import {
-  PathParamsContext,
-  SearchParamsContext,
-} from '../shared/lib/hooks-client-context.shared-runtime'
-import { HtmlContext } from '../shared/lib/html-context.shared-runtime'
-import { ImageConfigContext } from '../shared/lib/image-config-context.shared-runtime'
-import { LoadableContext } from '../shared/lib/loadable-context.shared-runtime'
-import Loadable from '../shared/lib/loadable.shared-runtime'
-import { denormalizePagePath } from '../shared/lib/page-path/denormalize-page-path'
-import { normalizePagePath } from '../shared/lib/page-path/normalize-page-path'
-import { RouterContext } from '../shared/lib/router-context.shared-runtime'
-import {
-  PathnameContextProviderAdapter,
-  adaptForAppRouterInstance,
-  adaptForPathParams,
-  adaptForSearchParams,
-} from '../shared/lib/router/adapters'
-import { isDynamicRoute } from '../shared/lib/router/utils/is-dynamic'
-import {
-  getDisplayName,
-  isResSent,
-  loadGetInitialProps,
-} from '../shared/lib/utils'
 import { stripInternalQueries } from './internal-utils'
+import type { ExpireTime, Revalidate } from './lib/revalidate'
 import { formatRevalidate } from './lib/revalidate'
 import { RenderSpan } from './lib/trace/constants'
 import { getTracer } from './lib/trace/tracer'
+import type { LoadComponentsReturnType } from './load-components'
 import RenderResult, { type PagesRenderResultMetadata } from './render-result'
+import type { NextParsedUrlQuery } from './request-meta'
 import { getRequestMeta } from './request-meta'
+import type { PagesModule } from './route-modules/pages/module'
+import type { ReactReadableStream } from './stream-utils/node-web-streams-helper'
 import {
   renderToInitialFizzStream,
   streamToString,
