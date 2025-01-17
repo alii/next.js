@@ -115,9 +115,9 @@ import {
 import { checkIsOnDemandRevalidate } from './api-utils'
 import { stripFlightHeaders } from './app-render/strip-flight-headers'
 import {
-  isBunNextResponse,
   isNodeNextRequest,
   isNodeNextResponse,
+  switchReqResForType,
 } from './base-http/helpers'
 import { getRevalidateReason } from './instrumentation/utils'
 import { checkIsAppPPREnabled } from './lib/experimental/ppr'
@@ -2457,19 +2457,6 @@ export default abstract class Server<
 
       if (routeModule) {
         if (isAppRouteRouteModule(routeModule)) {
-          if (
-            // The type check here ensures that `req` is correctly typed, and the
-            // environment variable check provides dead code elimination.
-            process.env.NEXT_RUNTIME === 'edge' ||
-            !isNodeNextRequest(req) ||
-            !isNodeNextResponse(res) ||
-            isBunNextResponse(res)
-          ) {
-            throw new Error(
-              'Invariant: App Route Route Modules cannot be used in the edge runtime'
-            )
-          }
-
           const context: AppRouteRouteHandlerContext = {
             params: opts.params,
             prerenderManifest,
@@ -2494,9 +2481,24 @@ export default abstract class Server<
           }
 
           try {
-            const request = NextRequestAdapter.fromNodeNextRequest(
-              req,
-              signalFromNodeResponse(res.originalResponse)
+            const request = switchReqResForType(
+              { req, res },
+              {
+                node: (node) => {
+                  return NextRequestAdapter.fromNodeNextRequest(
+                    node.req,
+                    signalFromNodeResponse(node.res.originalResponse)
+                  )
+                },
+                bun: (bun) => {
+                  return bun.req.toNextRequest()
+                },
+                web: () => {
+                  throw new Error(
+                    'Invariant: App Route Route Modules cannot be used with the edge runtime'
+                  )
+                },
+              }
             )
 
             const response = await routeModule.handle(request, context)

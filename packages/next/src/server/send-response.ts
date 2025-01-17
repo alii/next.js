@@ -69,5 +69,7 @@ export async function sendResponse(
     } else {
       originalResponse.end()
     }
+  } else {
+    throw new Error('Invariant: Unsupported NextRequest type')
   }
 }

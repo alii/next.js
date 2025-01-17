@@ -1,6 +1,7 @@
 import type { BaseNextRequest, BaseNextResponse } from './'
+
 import { BunNextRequest, BunNextResponse } from './bun'
-import type { NodeNextRequest, NodeNextResponse } from './node'
+import { NodeNextRequest, NodeNextResponse } from './node'
 import type { WebNextRequest, WebNextResponse } from './web'
 
 /**
@@ -37,7 +38,7 @@ export const isWebNextResponse = (
  */
 export const isNodeNextRequest = (
   req: BaseNextRequest
-): req is NodeNextRequest => process.env.NEXT_RUNTIME !== 'edge'
+): req is NodeNextRequest => req instanceof NodeNextRequest
 
 /**
  * Type guard to determine if a response is a NodeNextResponse. This does not
@@ -47,7 +48,7 @@ export const isNodeNextRequest = (
  */
 export const isNodeNextResponse = (
   res: BaseNextResponse
-): res is NodeNextResponse => process.env.NEXT_RUNTIME !== 'edge'
+): res is NodeNextResponse => res instanceof NodeNextResponse
 
 export const isBunNextRequest = (req: BaseNextRequest): req is BunNextRequest =>
   req instanceof BunNextRequest
@@ -55,3 +56,29 @@ export const isBunNextRequest = (req: BaseNextRequest): req is BunNextRequest =>
 export const isBunNextResponse = (
   res: BaseNextResponse
 ): res is BunNextResponse => res instanceof BunNextResponse
+
+export type ReqResOnRuntimes = {
+  node: { req: NodeNextRequest; res: NodeNextResponse }
+  bun: { req: BunNextRequest; res: BunNextResponse }
+  web: { req: WebNextRequest; res: WebNextResponse }
+}
+
+export function switchReqResForType<T>(
+  reqRes:
+    | ReqResOnRuntimes[keyof ReqResOnRuntimes]
+    | { req: BaseNextRequest; res: BaseNextResponse },
+  map: {
+    [Key in keyof ReqResOnRuntimes]: (reqRes: ReqResOnRuntimes[Key]) => T
+  }
+) {
+  switch (true) {
+    case isNodeNextRequest(reqRes.req):
+      return map.node(reqRes as never)
+    case isBunNextRequest(reqRes.req):
+      return map.bun(reqRes as never)
+    case isWebNextRequest(reqRes.req):
+      return map.web(reqRes as never)
+    default:
+      throw new Error('Invalid request or response')
+  }
+}
