@@ -63,7 +63,7 @@ export type ReqResOnRuntimes = {
   web: { req: WebNextRequest; res: WebNextResponse }
 }
 
-export function switchReqResForType<T>(
+export function matchOnReqRes<T>(
   reqRes:
     | ReqResOnRuntimes[keyof ReqResOnRuntimes]
     | { req: BaseNextRequest; res: BaseNextResponse },
@@ -78,6 +78,42 @@ export function switchReqResForType<T>(
       return map.bun(reqRes as never)
     case isWebNextRequest(reqRes.req):
       return map.web(reqRes as never)
+    default:
+      throw new Error('Invalid request or response')
+  }
+}
+
+export function matchOnReq<T>(
+  req: BaseNextRequest,
+  map: {
+    [Key in keyof ReqResOnRuntimes]: (req: ReqResOnRuntimes[Key]['req']) => T
+  }
+) {
+  switch (true) {
+    case isNodeNextRequest(req):
+      return map.node(req as never)
+    case isBunNextRequest(req):
+      return map.bun(req as never)
+    case isWebNextRequest(req):
+      return map.web(req as never)
+    default:
+      throw new Error('Invalid request or response')
+  }
+}
+
+export function matchOnRes<T>(
+  res: BaseNextResponse,
+  map: {
+    [Key in keyof ReqResOnRuntimes]: (res: ReqResOnRuntimes[Key]['res']) => T
+  }
+) {
+  switch (true) {
+    case isNodeNextResponse(res):
+      return map.node(res as never)
+    case isBunNextResponse(res):
+      return map.bun(res as never)
+    case isWebNextResponse(res):
+      return map.web(res as never)
     default:
       throw new Error('Invalid request or response')
   }

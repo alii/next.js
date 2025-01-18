@@ -38,6 +38,8 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
     return this
   }
 
+  public override destination: WritableStream
+
   private readonly closeController = new CloseController()
 
   public statusCode: number | undefined
@@ -49,6 +51,8 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
     const transformStream = new TransformStream()
 
     super(transformStream.writable)
+
+    this.destination = transformStream.writable
     this.transformStream = transformStream
   }
 
@@ -104,7 +108,7 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
     return this
   }
 
-  private readonly sendPromise = new DetachedPromise<void>()
+  private readonly sendPromise = new DetachedPromise<Response | void>()
 
   private _sent = false
   public send() {
@@ -116,9 +120,17 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
     return this._sent
   }
 
+  public async fastSendResponse(response: Response) {
+    this.sendPromise.resolve(response)
+    this._sent = true
+  }
+
   public async toResponse() {
-    // If we haven't called `send` yet, wait for it to be called.
-    if (!this.sent) await this.sendPromise.promise
+    const response = await this.sendPromise.promise
+
+    if (response) {
+      return response
+    }
 
     const body = this.textBody ?? this.transformStream.readable
 

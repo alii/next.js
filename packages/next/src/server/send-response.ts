@@ -1,5 +1,5 @@
-import type { BaseNextRequest, BaseNextResponse } from './base-http'
-import { isNodeNextResponse } from './base-http/helpers'
+import type { BaseNextRequest } from './base-http'
+import type { NodeNextResponse } from './base-http/node'
 
 import { pipeToNodeResponse } from './pipe-readable'
 import { splitCookiesString } from './web/utils'
@@ -13,63 +13,56 @@ import { splitCookiesString } from './web/utils'
  */
 export async function sendResponse(
   req: BaseNextRequest,
-  res: BaseNextResponse,
+  res: NodeNextResponse,
   response: Response,
   waitUntil?: Promise<unknown>
 ): Promise<void> {
-  if (
-    // The type check here ensures that `req` is correctly typed, and the
-    // environment variable check provides dead code elimination.
-    process.env.NEXT_RUNTIME !== 'edge' &&
-    isNodeNextResponse(res)
-  ) {
-    // Copy over the response status.
-    res.statusCode = response.status
-    res.statusMessage = response.statusText
+  console.log('sendResponse', response.status)
 
-    // can add more headers to this list if needed
-    const headersWithMultipleValuesAllowed = [
-      'set-cookie',
-      'www-authenticate',
-      'proxy-authenticate',
-    ]
+  // Copy over the response status.
+  res.statusCode = response.status
+  res.statusMessage = response.statusText
 
-    // Copy over the response headers.
-    response.headers?.forEach((value, name) => {
-      // The append handling is special cased for `set-cookie`.
-      if (name.toLowerCase() === 'set-cookie') {
-        // TODO: (wyattjoh) replace with native response iteration when we can upgrade undici
-        for (const cookie of splitCookiesString(value)) {
-          res.appendHeader(name, cookie)
-        }
-      } else {
-        // only append the header if it is either not present in the outbound response
-        // or if the header supports multiple values
-        const isHeaderPresent = typeof res.getHeader(name) !== 'undefined'
-        if (
-          headersWithMultipleValuesAllowed.includes(name.toLowerCase()) ||
-          !isHeaderPresent
-        ) {
-          res.appendHeader(name, value)
-        }
+  // can add more headers to this list if needed
+  const headersWithMultipleValuesAllowed = [
+    'set-cookie',
+    'www-authenticate',
+    'proxy-authenticate',
+  ]
+
+  // Copy over the response headers.
+  response.headers?.forEach((value, name) => {
+    // The append handling is special cased for `set-cookie`.
+    if (name.toLowerCase() === 'set-cookie') {
+      // TODO: (wyattjoh) replace with native response iteration when we can upgrade undici
+      for (const cookie of splitCookiesString(value)) {
+        res.appendHeader(name, cookie)
       }
-    })
-
-    /**
-     * The response can't be directly piped to the underlying response. The
-     * following is duplicated from the edge runtime handler.
-     *
-     * See packages/next/server/next-server.ts
-     */
-    const { originalResponse } = res
-
-    // A response body must not be sent for HEAD requests. See https://httpwg.org/specs/rfc9110.html#HEAD
-    if (response.body && req.method !== 'HEAD') {
-      await pipeToNodeResponse(response.body, originalResponse, waitUntil)
     } else {
-      originalResponse.end()
+      // only append the header if it is either not present in the outbound response
+      // or if the header supports multiple values
+      const isHeaderPresent = typeof res.getHeader(name) !== 'undefined'
+      if (
+        headersWithMultipleValuesAllowed.includes(name.toLowerCase()) ||
+        !isHeaderPresent
+      ) {
+        res.appendHeader(name, value)
+      }
     }
+  })
+
+  /**
+   * The response can't be directly piped to the underlying response. The
+   * following is duplicated from the edge runtime handler.
+   *
+   * See packages/next/server/next-server.ts
+   */
+  const { originalResponse } = res
+
+  // A response body must not be sent for HEAD requests. See https://httpwg.org/specs/rfc9110.html#HEAD
+  if (response.body && req.method !== 'HEAD') {
+    await pipeToNodeResponse(response.body, originalResponse, waitUntil)
   } else {
-    throw new Error('Invariant: Unsupported NextRequest type')
+    originalResponse.end()
   }
 }

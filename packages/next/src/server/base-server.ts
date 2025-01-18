@@ -117,7 +117,8 @@ import { stripFlightHeaders } from './app-render/strip-flight-headers'
 import {
   isNodeNextRequest,
   isNodeNextResponse,
-  switchReqResForType,
+  matchOnReqRes,
+  matchOnRes,
 } from './base-http/helpers'
 import { getRevalidateReason } from './instrumentation/utils'
 import { checkIsAppPPREnabled } from './lib/experimental/ppr'
@@ -2481,7 +2482,7 @@ export default abstract class Server<
           }
 
           try {
-            const request = switchReqResForType(
+            const request = matchOnReqRes(
               { req, res },
               {
                 node: (node) => {
@@ -2557,12 +2558,25 @@ export default abstract class Server<
             }
 
             // Send the response now that we have copied it into the cache.
-            await sendResponse(
-              req,
-              res,
-              response,
-              context.renderOpts.pendingWaitUntil
-            )
+
+            await matchOnRes(res, {
+              node: async (nodeRes) => {
+                await sendResponse(
+                  req,
+                  nodeRes,
+                  response,
+                  context.renderOpts.pendingWaitUntil
+                )
+              },
+              bun: async (bunRes) => {
+                await bunRes.fastSendResponse(response)
+              },
+              web: async () => {
+                throw new Error(
+                  'WebNextResponse may not be used inside renderToResponseWithComponents'
+                )
+              },
+            })
             return null
           } catch (err) {
             await this.instrumentationOnRequestError(err, req, {
@@ -2578,7 +2592,17 @@ export default abstract class Server<
             Log.error(err)
 
             // Otherwise, send a 500 response.
-            await sendResponse(req, res, new Response(null, { status: 500 }))
+            await matchOnRes(res, {
+              node: (nodeRes) =>
+                sendResponse(req, nodeRes, new Response(null, { status: 500 })),
+              bun: (bunRes) =>
+                bunRes.fastSendResponse(new Response(null, { status: 500 })),
+              web: () => {
+                throw new Error(
+                  'WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime'
+                )
+              },
+            })
 
             return null
           }
@@ -2588,10 +2612,19 @@ export default abstract class Server<
         ) {
           // An OPTIONS request to a page handler is invalid.
           if (req.method === 'OPTIONS' && !is404Page) {
-            await sendResponse(req, res, new Response(null, { status: 400 }))
+            await matchOnRes(res, {
+              node: (nodeRes) =>
+                sendResponse(req, nodeRes, new Response(null, { status: 400 })),
+              bun: (bunRes) =>
+                bunRes.fastSendResponse(new Response(null, { status: 400 })),
+              web: () => {
+                throw new Error(
+                  'WebNextResponse may not be used inside renderToResponseWithComponents'
+                )
+              },
+            })
             return null
           }
-
           if (isPagesRouteModule(routeModule)) {
             // Due to the way we pass data by mutating `renderOpts`, we can't extend
             // the object here but only updating its `clientReferenceManifest` and
@@ -3393,14 +3426,32 @@ export default abstract class Server<
         )
       }
 
-      await sendResponse(
-        req,
-        res,
-        new Response(cachedData.body, {
-          headers,
-          status: cachedData.status || 200,
-        })
-      )
+      await matchOnRes(res, {
+        node: async (nodeRes) => {
+          await sendResponse(
+            req,
+            nodeRes,
+            new Response(cachedData.body, {
+              headers,
+              status: cachedData.status || 200,
+            })
+          )
+        },
+        bun: async (bunRes) => {
+          bunRes.fastSendResponse(
+            new Response(cachedData.body, {
+              headers,
+              status: cachedData.status || 200,
+            })
+          )
+        },
+        web: async () => {
+          throw new Error(
+            'WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime'
+          )
+        },
+      })
+
       return null
     } else if (cachedData.kind === CachedRouteKind.APP_PAGE) {
       // If the request has a postponed state and it's a resume request we
