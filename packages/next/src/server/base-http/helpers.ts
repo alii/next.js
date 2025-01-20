@@ -67,16 +67,16 @@ export function matchOnReqRes<T>(
   reqRes:
     | ReqResOnRuntimes[keyof ReqResOnRuntimes]
     | { req: BaseNextRequest; res: BaseNextResponse },
-  map: {
+  map: Partial<{
     [Key in keyof ReqResOnRuntimes]: (reqRes: ReqResOnRuntimes[Key]) => T
-  }
+  }>
 ) {
   switch (true) {
-    case isNodeNextRequest(reqRes.req):
+    case isNodeNextRequest(reqRes.req) && map.node !== undefined:
       return map.node(reqRes as never)
-    case isBunNextRequest(reqRes.req):
+    case isBunNextRequest(reqRes.req) && map.bun !== undefined:
       return map.bun(reqRes as never)
-    case isWebNextRequest(reqRes.req):
+    case isWebNextRequest(reqRes.req) && map.web !== undefined:
       return map.web(reqRes as never)
     default:
       throw new Error('Invalid request or response')
@@ -85,16 +85,16 @@ export function matchOnReqRes<T>(
 
 export function matchOnReq<T>(
   req: BaseNextRequest,
-  map: {
+  map: Partial<{
     [Key in keyof ReqResOnRuntimes]: (req: ReqResOnRuntimes[Key]['req']) => T
-  }
+  }>
 ) {
   switch (true) {
-    case isNodeNextRequest(req):
+    case isNodeNextRequest(req) && map.node !== undefined:
       return map.node(req as never)
-    case isBunNextRequest(req):
+    case isBunNextRequest(req) && map.bun !== undefined:
       return map.bun(req as never)
-    case isWebNextRequest(req):
+    case isWebNextRequest(req) && map.web !== undefined:
       return map.web(req as never)
     default:
       throw new Error('Invalid request or response')
@@ -103,16 +103,16 @@ export function matchOnReq<T>(
 
 export function matchOnRes<T>(
   res: BaseNextResponse,
-  map: {
+  map: Partial<{
     [Key in keyof ReqResOnRuntimes]: (res: ReqResOnRuntimes[Key]['res']) => T
-  }
+  }>
 ) {
   switch (true) {
-    case isNodeNextResponse(res):
+    case isNodeNextResponse(res) && map.node !== undefined:
       return map.node(res as never)
-    case isBunNextResponse(res):
+    case isBunNextResponse(res) && map.bun !== undefined:
       return map.bun(res as never)
-    case isWebNextResponse(res):
+    case isWebNextResponse(res) && map.web !== undefined:
       return map.web(res as never)
     default:
       throw new Error('Invalid request or response')

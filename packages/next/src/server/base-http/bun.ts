@@ -32,12 +32,6 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
   private headers = new Headers()
   private textBody: string | undefined = undefined
 
-  // Hack because Next.js uses `.originalResponse` to patch res.setHeader support when it thinks we are using Node.js
-  // because the check for Node.js is actually terrible and doesn't actually check the response is a Node.js response at all
-  get originalResponse() {
-    return this
-  }
-
   public override destination: WritableStream
 
   private readonly closeController = new CloseController()
@@ -120,7 +114,11 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
     return this._sent
   }
 
-  public async fastSendResponse(response: Response) {
+  /**
+   * Resolve the internal send promise to be a response directly
+   * @param response The response
+   */
+  public async resolveAsResponse(response: Response) {
     this.sendPromise.resolve(response)
     this._sent = true
   }

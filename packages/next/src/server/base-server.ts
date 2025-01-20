@@ -115,6 +115,7 @@ import {
 import { checkIsOnDemandRevalidate } from './api-utils'
 import { stripFlightHeaders } from './app-render/strip-flight-headers'
 import {
+  isBunNextResponse,
   isNodeNextRequest,
   isNodeNextResponse,
   matchOnReqRes,
@@ -2206,12 +2207,14 @@ export default abstract class Server<
       if (process.env.NEXT_RUNTIME !== 'edge') {
         const { tryGetPreviewData } =
           require('./api-utils/node/try-get-preview-data') as typeof import('./api-utils/node/try-get-preview-data')
+
         previewData = tryGetPreviewData(
           req,
           res,
           this.renderOpts.previewProps,
           !!this.nextConfig.experimental.multiZoneDraftMode
         )
+
         isPreviewMode = previewData !== false
       }
     }
@@ -2558,7 +2561,6 @@ export default abstract class Server<
             }
 
             // Send the response now that we have copied it into the cache.
-
             await matchOnRes(res, {
               node: async (nodeRes) => {
                 await sendResponse(
@@ -2569,7 +2571,7 @@ export default abstract class Server<
                 )
               },
               bun: async (bunRes) => {
-                await bunRes.fastSendResponse(response)
+                await bunRes.resolveAsResponse(response)
               },
               web: async () => {
                 throw new Error(
@@ -2591,12 +2593,12 @@ export default abstract class Server<
 
             Log.error(err)
 
+            const fatal500 = new Response(null, { status: 500 })
+
             // Otherwise, send a 500 response.
             await matchOnRes(res, {
-              node: (nodeRes) =>
-                sendResponse(req, nodeRes, new Response(null, { status: 500 })),
-              bun: (bunRes) =>
-                bunRes.fastSendResponse(new Response(null, { status: 500 })),
+              node: (nodeRes) => sendResponse(req, nodeRes, fatal500),
+              bun: (bunRes) => bunRes.resolveAsResponse(fatal500),
               web: () => {
                 throw new Error(
                   'WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime'
@@ -2616,7 +2618,7 @@ export default abstract class Server<
               node: (nodeRes) =>
                 sendResponse(req, nodeRes, new Response(null, { status: 400 })),
               bun: (bunRes) =>
-                bunRes.fastSendResponse(new Response(null, { status: 400 })),
+                bunRes.resolveAsResponse(new Response(null, { status: 400 })),
               web: () => {
                 throw new Error(
                   'WebNextResponse may not be used inside renderToResponseWithComponents'
@@ -3081,6 +3083,7 @@ export default abstract class Server<
         pagesFallback: undefined,
         fallbackRouteParams,
       })
+
       if (!result) return null
 
       return {
@@ -3142,14 +3145,15 @@ export default abstract class Server<
         try {
           await this.responseCache.get(
             ssgCacheKey,
-            () =>
-              doRender({
+            () => {
+              return doRender({
                 // We're an on-demand request, so we don't need to pass in the
                 // fallbackRouteParams.
                 fallbackRouteParams: null,
                 pagesFallback: undefined,
                 postponed: undefined,
-              }),
+              })
+            },
             {
               routeKind: RouteKind.APP_PAGE,
               incrementalCache,
@@ -3318,6 +3322,7 @@ export default abstract class Server<
     // If there's a callback for `onCacheEntry`, call it with the cache entry
     // and the revalidate options.
     const onCacheEntry = getRequestMeta(req, 'onCacheEntry')
+
     if (onCacheEntry) {
       const finished = await onCacheEntry(
         {
@@ -3438,7 +3443,7 @@ export default abstract class Server<
           )
         },
         bun: async (bunRes) => {
-          bunRes.fastSendResponse(
+          bunRes.resolveAsResponse(
             new Response(cachedData.body, {
               headers,
               status: cachedData.status || 200,
@@ -3547,6 +3552,22 @@ export default abstract class Server<
       // should also be the case for a resume request because it's completed
       // as a server render (rather than a static render).
       if (!didPostpone || this.minimalMode) {
+        // TODO: THIS IS WHERE IT HANGS
+
+        if (isBunNextResponse(res)) {
+          res.statusCode = 200
+
+          if (body.contentType) {
+            res.appendHeader('Content-Type', body.contentType)
+          }
+
+          console.log(body)
+
+          res.body(body.toUnchunkedString()).send()
+
+          return null
+        }
+
         return {
           type: 'html',
           body,
@@ -3692,6 +3713,7 @@ export default abstract class Server<
 
     if (result) {
       getTracer().setRootSpanAttribute('next.route', pathname)
+
       try {
         return await this.renderToResponseWithComponents(ctx, result)
       } catch (err) {

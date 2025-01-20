@@ -657,6 +657,7 @@ export class BunNextServer extends BaseServer<
 
     try {
       await this.render(req, res, pathname, query, parsedUrl, true)
+      console.log('handled request')
 
       return true
     } catch (err) {
