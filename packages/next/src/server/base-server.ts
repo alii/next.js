@@ -3563,7 +3563,8 @@ export default abstract class Server<
 
           console.log(body)
 
-          res.body(body.toUnchunkedString()).send()
+          res.send()
+          body.pipeTo(res.destination)
 
           return null
         }

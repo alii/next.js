@@ -653,11 +653,8 @@ export class BunNextServer extends BaseServer<
 
     const bubbleNoFallback = getRequestMeta(req, 'bubbleNoFallback')
 
-    console.log('handle request')
-
     try {
       await this.render(req, res, pathname, query, parsedUrl, true)
-      console.log('handled request')
 
       return true
     } catch (err) {
@@ -666,6 +663,7 @@ export class BunNextServer extends BaseServer<
       if (err instanceof NoFallbackError && bubbleNoFallback) {
         return false
       }
+
       throw err
     }
   }
