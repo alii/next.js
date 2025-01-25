@@ -32,30 +32,22 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
   private headers = new Headers()
   private textBody: string | undefined = undefined
 
-  public override destination: WritableStream
+  public override destination: WritableStream<Uint8Array>
 
   private readonly closeController = new CloseController()
 
   public statusCode: number | undefined
   public statusMessage: string | undefined
 
-  private readonly transformStream: TransformStream
+  private readonly transformStream: TransformStream<Uint8Array, Uint8Array>
 
-  public constructor() {
-    const transformStream = new TransformStream()
-
+  public constructor(
+    transformStream = new TransformStream<Uint8Array, Uint8Array>()
+  ) {
     super(transformStream.writable)
 
     this.destination = transformStream.writable
     this.transformStream = transformStream
-  }
-
-  public get writable() {
-    return this.transformStream.writable
-  }
-
-  public get readable() {
-    return this.transformStream.readable
   }
 
   public setHeader(name: string, value: string | string[]): this {
@@ -155,7 +147,7 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
   public onClose(callback: () => void) {
     if (this.closeController.isClosed) {
       throw new Error(
-        'Cannot call onClose on a WebNextResponse that is already closed'
+        'Cannot call onClose on a BunNextResponse that is already closed'
       )
     }
 

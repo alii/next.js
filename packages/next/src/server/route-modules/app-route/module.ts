@@ -1,73 +1,48 @@
-import type { NextConfig } from '../../config-shared'
-import type { AppRouteRouteDefinition } from '../../route-definitions/app-route-route-definition'
-import type { AppSegmentConfig } from '../../../build/segment-config/app/app-segment-config'
-import type { NextRequest } from '../../web/spec-extension/request'
 import type { PrerenderManifest } from '../../../build'
-import type { NextURL } from '../../web/next-url'
+import type { AppSegmentConfig } from '../../../build/segment-config/app/app-segment-config'
 import type { DeepReadonly } from '../../../shared/lib/deep-readonly'
 import type { WorkUnitStore } from '../../app-render/work-unit-async-storage.external'
+import type { NextConfig } from '../../config-shared'
+import type { AppRouteRouteDefinition } from '../../route-definitions/app-route-route-definition'
+import type { NextURL } from '../../web/next-url'
+import type { NextRequest } from '../../web/spec-extension/request'
 
-import {
-  RouteModule,
-  type RouteModuleHandleContext,
-  type RouteModuleOptions,
-} from '../route-module'
+import * as Log from '../../../build/output/log'
+import { printDebugThrownValueForProspectiveRender } from '../../app-render/prospective-render-utils'
 import { createRequestStoreForAPI } from '../../async-storage/request-store'
 import {
   createWorkStore,
   type WorkStoreContext,
 } from '../../async-storage/work-store'
-import { type HTTP_METHOD, HTTP_METHODS, isHTTPMethod } from '../../web/http'
 import { getImplicitTags } from '../../lib/implicit-tags'
 import { patchFetch } from '../../lib/patch-fetch'
-import { getTracer } from '../../lib/trace/tracer'
 import { AppRouteRouteHandlersSpan } from '../../lib/trace/constants'
-import { getPathnameFromAbsolutePath } from './helpers/get-pathname-from-absolute-path'
-import * as Log from '../../../build/output/log'
-import { autoImplementMethods } from './helpers/auto-implement-methods'
+import { getTracer } from '../../lib/trace/tracer'
+import { HTTP_METHODS, isHTTPMethod, type HTTP_METHOD } from '../../web/http'
+import { HeadersAdapter } from '../../web/spec-extension/adapters/headers'
 import {
   appendMutableCookies,
+  RequestCookiesAdapter,
   type ReadonlyRequestCookies,
 } from '../../web/spec-extension/adapters/request-cookies'
-import { HeadersAdapter } from '../../web/spec-extension/adapters/headers'
-import { RequestCookiesAdapter } from '../../web/spec-extension/adapters/request-cookies'
+import {
+  RouteModule,
+  type RouteModuleHandleContext,
+  type RouteModuleOptions,
+} from '../route-module'
+import { autoImplementMethods } from './helpers/auto-implement-methods'
+import { getPathnameFromAbsolutePath } from './helpers/get-pathname-from-absolute-path'
 import { parsedUrlQueryToParams } from './helpers/parsed-url-query-to-params'
-import { printDebugThrownValueForProspectiveRender } from '../../app-render/prospective-render-utils'
 
 import * as serverHooks from '../../../client/components/hooks-server-context'
 import { DynamicServerError } from '../../../client/components/hooks-server-context'
 
-import {
-  workAsyncStorage,
-  type WorkStore,
-} from '../../app-render/work-async-storage.external'
-import {
-  workUnitAsyncStorage,
-  type RequestStore,
-  type PrerenderStore,
-} from '../../app-render/work-unit-async-storage.external'
-import {
-  actionAsyncStorage,
-  type ActionStore,
-} from '../../app-render/action-async-storage.external'
-import * as sharedModules from './shared-modules'
-import { getIsServerAction } from '../../lib/server-action-request-meta'
 import { RequestCookies } from 'next/dist/compiled/@edge-runtime/cookies'
-import { cleanURL } from './helpers/clean-url'
-import { StaticGenBailoutError } from '../../../client/components/static-generation-bailout'
-import { isStaticGenEnabled } from './helpers/is-static-gen-enabled'
-import {
-  abortAndThrowOnSynchronousRequestDataAccess,
-  postponeWithTracking,
-  createDynamicTrackingState,
-  getFirstDynamicReason,
-} from '../../app-render/dynamic-rendering'
-import { ReflectAdapter } from '../../web/spec-extension/adapters/reflect'
-import type { RenderOptsPartial } from '../../app-render/types'
-import { CacheSignal } from '../../app-render/cache-signal'
-import { scheduleImmediate } from '../../../lib/scheduler'
-import { createServerParamsForRoute } from '../../request/params'
 import type { AppSegment } from '../../../build/segment-config/app/app-segments'
+import {
+  getAccessFallbackHTTPStatus,
+  isHTTPAccessFallbackError,
+} from '../../../client/components/http-access-fallback/http-access-fallback'
 import {
   getRedirectStatusCodeFromError,
   getURLFromRedirectError,
@@ -76,12 +51,37 @@ import {
   isRedirectError,
   type RedirectError,
 } from '../../../client/components/redirect-error'
-import {
-  getAccessFallbackHTTPStatus,
-  isHTTPAccessFallbackError,
-} from '../../../client/components/http-access-fallback/http-access-fallback'
 import { RedirectStatusCode } from '../../../client/components/redirect-status-code'
+import { StaticGenBailoutError } from '../../../client/components/static-generation-bailout'
 import { INFINITE_CACHE } from '../../../lib/constants'
+import { scheduleImmediate } from '../../../lib/scheduler'
+import {
+  actionAsyncStorage,
+  type ActionStore,
+} from '../../app-render/action-async-storage.external'
+import { CacheSignal } from '../../app-render/cache-signal'
+import {
+  abortAndThrowOnSynchronousRequestDataAccess,
+  createDynamicTrackingState,
+  getFirstDynamicReason,
+  postponeWithTracking,
+} from '../../app-render/dynamic-rendering'
+import type { RenderOptsPartial } from '../../app-render/types'
+import {
+  workAsyncStorage,
+  type WorkStore,
+} from '../../app-render/work-async-storage.external'
+import {
+  workUnitAsyncStorage,
+  type PrerenderStore,
+  type RequestStore,
+} from '../../app-render/work-unit-async-storage.external'
+import { getIsServerAction } from '../../lib/server-action-request-meta'
+import { createServerParamsForRoute } from '../../request/params'
+import { ReflectAdapter } from '../../web/spec-extension/adapters/reflect'
+import { cleanURL } from './helpers/clean-url'
+import { isStaticGenEnabled } from './helpers/is-static-gen-enabled'
+import * as sharedModules from './shared-modules'
 
 export class WrappedNextRouterError {
   constructor(

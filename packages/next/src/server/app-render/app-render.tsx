@@ -1232,6 +1232,12 @@ async function renderToHTMLOrFlightImpl(
    */
   let requestId: string
 
+  /*
+  if ('Bun' in globalThis && globalThis.Bun.randomUUIDv7) {
+    requestId = globalThis.Bun.randomUUIDv7()
+  } else 
+  */
+
   if (process.env.NEXT_RUNTIME === 'edge') {
     requestId = crypto.randomUUID()
   } else {

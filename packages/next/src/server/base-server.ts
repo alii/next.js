@@ -115,7 +115,6 @@ import {
 import { checkIsOnDemandRevalidate } from './api-utils'
 import { stripFlightHeaders } from './app-render/strip-flight-headers'
 import {
-  isBunNextResponse,
   isNodeNextRequest,
   isNodeNextResponse,
   matchOnReqRes,
@@ -1389,6 +1388,7 @@ export default abstract class Server<
       // we only honor this header if we are inside of a render worker to
       // prevent external users coercing the routing path
       const invokePath = getRequestMeta(req, 'invokePath')
+
       const useInvokePath =
         !useMatchedPathHeader &&
         process.env.NEXT_RUNTIME !== 'edge' &&
@@ -1690,13 +1690,16 @@ export default abstract class Server<
     }
 
     const payload = await fn(ctx)
+
     if (payload === null) {
       return
     }
+
     const { req, res } = ctx
     const originalStatus = res.statusCode
     const { body, type } = payload
     let { revalidate } = payload
+
     if (!res.sent) {
       const { generateEtags, poweredByHeader, dev } = this.renderOpts
 
@@ -1714,6 +1717,7 @@ export default abstract class Server<
         revalidate,
         expireTime: this.nextConfig.expireTime,
       })
+
       res.statusCode = originalStatus
     }
   }
@@ -1827,7 +1831,7 @@ export default abstract class Server<
       return this.render404(req, res, parsedUrl)
     }
 
-    return this.pipe((ctx) => this.renderToResponse(ctx), {
+    return this.pipe(async (ctx) => this.renderToResponse(ctx), {
       req,
       res,
       pathname,
@@ -2549,6 +2553,7 @@ export default abstract class Server<
 
               return cacheEntry
             }
+
             let pendingWaitUntil = context.renderOpts.pendingWaitUntil
 
             // Attempt using provided waitUntil if available
@@ -3552,23 +3557,6 @@ export default abstract class Server<
       // should also be the case for a resume request because it's completed
       // as a server render (rather than a static render).
       if (!didPostpone || this.minimalMode) {
-        // TODO: THIS IS WHERE IT HANGS
-
-        if (isBunNextResponse(res)) {
-          res.statusCode = 200
-
-          if (body.contentType) {
-            res.appendHeader('Content-Type', body.contentType)
-          }
-
-          console.log(body)
-
-          res.send()
-          body.pipeTo(res.destination)
-
-          return null
-        }
-
         return {
           type: 'html',
           body,
@@ -3789,6 +3777,7 @@ export default abstract class Server<
           },
           bubbleNoFallback
         )
+
         if (result !== false) return result
       }
 

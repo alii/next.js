@@ -26,7 +26,8 @@ import {
   type AppSharedContext,
   renderToHTMLOrFlight,
 } from './app-render/app-render'
-import { BunNextRequest, BunNextResponse } from './base-http/bun'
+import type { BunNextRequest} from './base-http/bun';
+import { BunNextResponse } from './base-http/bun'
 import BaseServer, {
   type FindComponentsResult,
   type LoadedRenderOpts,
@@ -54,6 +55,8 @@ import type { Params } from './request/params'
 import { getMaybePagePath } from './require'
 import ResponseCache, { type ResponseCacheBase } from './response-cache'
 import type { PagesAPIRouteMatch } from './route-matches/pages-api-route-match'
+import { isAppRouteRouteModule } from './route-modules/checks'
+import { NextRequest } from './web/exports'
 
 export interface BunNextServerOptions {
   /**
@@ -83,11 +86,16 @@ export interface BunNextServerOptions {
 // elsewhere around the codebase. proper solution is
 // a really huge refactor
 declare namespace Bun {
+  export interface Server {
+    url: URL
+    reload: (options: Bun.ServeOptions) => void
+  }
+
   export interface ServeOptions {
     port: number
     hostname: string
     static: Record<string, Response>
-    fetch: (request: Request) => Promise<Response>
+    fetch: (request: Request, server: Bun.Server) => Promise<Response>
   }
 
   export interface Glob {
@@ -97,10 +105,7 @@ declare namespace Bun {
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 declare const Bun: {
-  serve: (options: Bun.ServeOptions) => {
-    url: URL
-    reload: (options: Bun.ServeOptions) => void
-  }
+  serve: (options: Bun.ServeOptions) => Bun.Server
   file: (path: string) => Blob
   Glob: {
     new (pattern: string): Bun.Glob
@@ -159,8 +164,6 @@ export class BunNextServer extends BaseServer<
       })
     }
 
-    console.log({ staticAssets })
-
     return staticAssets
   }
 
@@ -216,29 +219,85 @@ export class BunNextServer extends BaseServer<
       },
     })
 
-    const handler = server.getRequestHandler()
+    server.onStaticResponse((path, response) => {
+      bunServer.reload({
+        ...options,
+        static: {
+          ...options.static,
+          [path]: response,
+        },
+      })
+    })
+
+    // const handler = server.getRequestHandler()
     const staticAssets = await server.collectStaticAssets()
 
-    const bunServer = Bun.serve({
+    const fetch: Bun.ServeOptions['fetch'] = async (rawRequest) => {
+      // const url = new URL(rawRequest.url)
+
+      // return server.fastHandle(new BunNextRequest(url, rawRequest))
+
+      // const response = new BunNextResponse()
+
+      const components = await loadComponents({
+        distDir: server.serverOptions.distDir,
+        page: rawRequest.url,
+        isAppPath: true,
+        isDev: false,
+        sriEnabled: false,
+      })
+
+      if (!components) {
+        return new Response('Not found', {
+          status: 404,
+        })
+      }
+
+      if (!isAppRouteRouteModule(components.routeModule)) {
+        return new Response('Not found', {
+          status: 404,
+        })
+      }
+
+      const res = new BunNextResponse()
+
+      const nextRequest = new NextRequest(rawRequest)
+
+      const response = await components.routeModule.handle(nextRequest, {
+        prerenderManifest: server.getPrerenderManifest(),
+        sharedContext: server.serverOptions.appSharedContext,
+        params: {},
+        renderOpts: {
+          ...server.renderOpts,
+          ...components,
+          onClose: (cb) => res.onClose(cb),
+          waitUntil: undefined,
+          onAfterTaskError: (err) => {
+            console.error(err)
+          },
+        },
+      })
+
+      res.resolveAsResponse(response)
+
+      return res.toResponse()
+    }
+
+    const options: Bun.ServeOptions = {
       port,
       hostname,
       static: staticAssets,
+      fetch,
+    }
 
-      fetch: async (rawRequest) => {
-        // const url = new URL(rawRequest.url)
-
-        // return server.fastHandle(new BunNextRequest(url, rawRequest))
-
-        const request = new BunNextRequest(new URL(rawRequest.url), rawRequest)
-        const response = new BunNextResponse()
-
-        await handler(request, response)
-
-        return response.toResponse()
-      },
-    })
+    const bunServer = Bun.serve(options)
 
     return bunServer
+  }
+
+  private onStaticResponseCallback?: (path: string, response: Response) => void
+  private onStaticResponse(cb: (path: string, response: Response) => void) {
+    this.onStaticResponseCallback = cb
   }
 
   private static getMiddlewareMatcher(
@@ -281,7 +340,7 @@ export class BunNextServer extends BaseServer<
   }
 
   protected getBuildId(): string {
-    return this.buildId
+    return this.serverOptions.buildId
   }
 
   protected getinterceptionRoutePatterns(): RegExp[] {
@@ -387,11 +446,12 @@ export class BunNextServer extends BaseServer<
       )
     }
 
-    let promise: Promise<void> | undefined
     if (options.result.isDynamic) {
-      promise = options.result.pipeTo(res.writable)
+      await options.result.pipeTo(res.destination)
+      res.send()
     } else {
       const payload = options.result.toUnchunkedString()
+
       res.setHeader(
         'Content-Length',
         String(BunNextServer.fastByteLength(payload))
@@ -402,12 +462,8 @@ export class BunNextServer extends BaseServer<
       }
 
       res.body(payload)
+      res.send()
     }
-
-    res.send()
-
-    // If we have a promise, wait for it to resolve.
-    if (promise) await promise
   }
 
   protected async runApi(
@@ -584,8 +640,6 @@ export class BunNextServer extends BaseServer<
     query: NextParsedUrlQuery,
     renderOpts: LoadedRenderOpts
   ): Promise<RenderResult<AppPageRenderResultMetadata>> {
-    console.log('renderHTML')
-
     const result = await renderToHTMLOrFlight(
       req,
       res,
@@ -597,8 +651,6 @@ export class BunNextServer extends BaseServer<
       false,
       this.serverOptions.appSharedContext
     )
-
-    console.log('renderHTML', result)
 
     return result
   }

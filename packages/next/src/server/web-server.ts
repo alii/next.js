@@ -321,7 +321,6 @@ export default class NextWebServer extends BaseServer<
     url?: string
   }) {
     const result = await this.serverOptions.webServerConfig.loadComponent(page)
-    console.log('result', result)
 
     if (!result) return null
 

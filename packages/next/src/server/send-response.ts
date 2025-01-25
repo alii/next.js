@@ -17,8 +17,6 @@ export async function sendResponse(
   response: Response,
   waitUntil?: Promise<unknown>
 ): Promise<void> {
-  console.log('sendResponse', response.status)
-
   // Copy over the response status.
   res.statusCode = response.status
   res.statusMessage = response.statusText

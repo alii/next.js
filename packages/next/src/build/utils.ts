@@ -1471,6 +1471,7 @@ globalThis.AsyncLocalStorage = require('node:async_hooks').AsyncLocalStorage
 
 import 'next'
 import {BunNextServer} from 'next/dist/server/bun-server'
+import * as Log from 'next/dist/build/output/log'
 import { fileURLToPath } from 'node:url'
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
@@ -1491,7 +1492,7 @@ const server = await BunNextServer.start({
   hostname: hostname,
 })
 
-console.log(server.url)
+Log.info(\`Server started at \${server.url.toString()}\`)
 
     `.trim()
   } else {

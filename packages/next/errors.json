@@ -627,5 +627,6 @@
   "626": "Invariant: App Route Route Modules cannot be used with the edge runtime",
   "627": "Invalid request or response",
   "628": "WebNextResponse may not be used inside renderToResponseWithComponents",
-  "629": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime"
+  "629": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime",
+  "630": "Cannot call onClose on a BunNextResponse that is already closed"
 }

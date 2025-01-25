@@ -80,6 +80,10 @@ export abstract class BaseNextResponse<Destination = any> {
 
   abstract getHeaders(): OutgoingHttpHeaders
 
+  /**
+   * Write a text body to the response
+   * @param value Text
+   */
   abstract body(value: string): this
 
   abstract send(): void
