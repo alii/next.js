@@ -26,8 +26,7 @@ import {
   type AppSharedContext,
   renderToHTMLOrFlight,
 } from './app-render/app-render'
-import type { BunNextRequest} from './base-http/bun';
-import { BunNextResponse } from './base-http/bun'
+import { BunNextRequest, BunNextResponse } from './base-http/bun'
 import BaseServer, {
   type FindComponentsResult,
   type LoadedRenderOpts,
@@ -55,8 +54,6 @@ import type { Params } from './request/params'
 import { getMaybePagePath } from './require'
 import ResponseCache, { type ResponseCacheBase } from './response-cache'
 import type { PagesAPIRouteMatch } from './route-matches/pages-api-route-match'
-import { isAppRouteRouteModule } from './route-modules/checks'
-import { NextRequest } from './web/exports'
 
 export interface BunNextServerOptions {
   /**
@@ -219,68 +216,26 @@ export class BunNextServer extends BaseServer<
       },
     })
 
-    server.onStaticResponse((path, response) => {
-      bunServer.reload({
-        ...options,
-        static: {
-          ...options.static,
-          [path]: response,
-        },
-      })
-    })
+    // bunServer.reload({
+    //   ...options,
+    //   static: {
+    //     ...options.static,
+    //     [path]: response,
+    //   },
+    // })
 
-    // const handler = server.getRequestHandler()
+    const handler = server.getRequestHandler()
     const staticAssets = await server.collectStaticAssets()
 
     const fetch: Bun.ServeOptions['fetch'] = async (rawRequest) => {
-      // const url = new URL(rawRequest.url)
+      const url = new URL(rawRequest.url)
 
-      // return server.fastHandle(new BunNextRequest(url, rawRequest))
+      const request = new BunNextRequest(url, rawRequest)
+      const response = new BunNextResponse()
 
-      // const response = new BunNextResponse()
+      handler(request, response)
 
-      const components = await loadComponents({
-        distDir: server.serverOptions.distDir,
-        page: rawRequest.url,
-        isAppPath: true,
-        isDev: false,
-        sriEnabled: false,
-      })
-
-      if (!components) {
-        return new Response('Not found', {
-          status: 404,
-        })
-      }
-
-      if (!isAppRouteRouteModule(components.routeModule)) {
-        return new Response('Not found', {
-          status: 404,
-        })
-      }
-
-      const res = new BunNextResponse()
-
-      const nextRequest = new NextRequest(rawRequest)
-
-      const response = await components.routeModule.handle(nextRequest, {
-        prerenderManifest: server.getPrerenderManifest(),
-        sharedContext: server.serverOptions.appSharedContext,
-        params: {},
-        renderOpts: {
-          ...server.renderOpts,
-          ...components,
-          onClose: (cb) => res.onClose(cb),
-          waitUntil: undefined,
-          onAfterTaskError: (err) => {
-            console.error(err)
-          },
-        },
-      })
-
-      res.resolveAsResponse(response)
-
-      return res.toResponse()
+      return response.toResponse()
     }
 
     const options: Bun.ServeOptions = {
@@ -293,11 +248,6 @@ export class BunNextServer extends BaseServer<
     const bunServer = Bun.serve(options)
 
     return bunServer
-  }
-
-  private onStaticResponseCallback?: (path: string, response: Response) => void
-  private onStaticResponse(cb: (path: string, response: Response) => void) {
-    this.onStaticResponseCallback = cb
   }
 
   private static getMiddlewareMatcher(
