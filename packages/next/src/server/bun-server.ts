@@ -233,7 +233,7 @@ export class BunNextServer extends BaseServer<
       const request = new BunNextRequest(url, rawRequest)
       const response = new BunNextResponse()
 
-      handler(request, response)
+      await handler(request, response)
 
       return response.toResponse()
     }
@@ -397,7 +397,7 @@ export class BunNextServer extends BaseServer<
     }
 
     if (options.result.isDynamic) {
-      await options.result.pipeTo(res.destination)
+      options.result.pipeTo(res.destination)
       res.send()
     } else {
       const payload = options.result.toUnchunkedString()
