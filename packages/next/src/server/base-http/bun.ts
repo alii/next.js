@@ -1,22 +1,19 @@
 import type { OutgoingHttpHeaders } from 'node:http'
 import { DetachedPromise } from '../../lib/detached-promise'
 import { NextRequest } from '../web/exports'
-import { toNodeOutgoingHttpHeaders } from '../web/utils'
-import { CloseController, trackBodyConsumed } from '../web/web-on-close'
+// import { CloseController } from '../web/web-on-close'
 import { BaseNextRequest, BaseNextResponse, type FetchMetric } from './index'
 
 export class BunNextRequest extends BaseNextRequest<ReadableStream<Uint8Array> | null> {
   private readonly request: Request
 
   public fetchMetrics: FetchMetric[] | undefined
-
-  public readonly actualUrl: URL
+  private readonly originalUrl: URL
 
   constructor(url: URL, request: Request) {
-    super(request.method, request.url, request.body)
+    super(request.method, url.pathname, request.body)
+    this.originalUrl = url
     this.request = request
-    this.url = url.pathname
-    this.actualUrl = url
   }
 
   public get headers() {
@@ -24,30 +21,24 @@ export class BunNextRequest extends BaseNextRequest<ReadableStream<Uint8Array> |
   }
 
   public toNextRequest(): NextRequest {
-    return new NextRequest(this.request)
+    return new NextRequest(this.originalUrl, this.request)
   }
 }
 
-export class BunNextResponse extends BaseNextResponse<WritableStream> {
-  private headers = new Headers()
-  private textBody: string | undefined = undefined
+declare interface BunHeadersExtension extends Headers {
+  toJSON(): OutgoingHttpHeaders
+}
 
-  public override destination: WritableStream<Uint8Array>
+export class BunNextResponse extends BaseNextResponse {
+  private headers = new Headers() as BunHeadersExtension
 
-  private readonly closeController = new CloseController()
+  // private readonly closeController = new CloseController()
 
   public statusCode: number | undefined
   public statusMessage: string | undefined
 
-  private readonly transformStream: TransformStream<Uint8Array, Uint8Array>
-
-  public constructor(
-    transformStream = new TransformStream<Uint8Array, Uint8Array>()
-  ) {
-    super(transformStream.writable)
-
-    this.destination = transformStream.writable
-    this.transformStream = transformStream
+  public constructor() {
+    super()
   }
 
   public setHeader(name: string, value: string | string[]): this {
@@ -77,7 +68,7 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
   }
 
   public getHeaders(): OutgoingHttpHeaders {
-    return toNodeOutgoingHttpHeaders(this.headers)
+    return this.headers.toJSON()
   }
 
   public hasHeader(name: string): boolean {
@@ -89,16 +80,43 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
     return this
   }
 
-  public body(value: string) {
-    this.textBody = value
+  private init: string | ReadableStream | null = null
+
+  public body(value: string): this {
+    this.init = value
     return this
   }
 
-  private readonly sendPromise = new DetachedPromise<Response | void>()
+  public resolveAsStreamOrTextOrResponse(
+    value: ReadableStream | string | Response | null
+  ) {
+    if (value instanceof Response) {
+      this.sendPromise.resolve(value)
+      this._sent = true
+    } else {
+      this.init = value
+      this.send()
+    }
+  }
+
+  public isStaticAsset = false
+
+  private readonly sendPromise = new DetachedPromise<Response>()
 
   private _sent = false
   public send() {
-    this.sendPromise.resolve()
+    let init: BodyInit | null = this.init
+
+    this.sendPromise.resolve(
+      new Response(init, {
+        headers: this.headers,
+        status: this.statusCode,
+        statusText: this.statusMessage,
+      })
+    )
+
+    // this.closeController.dispatchClose()
+
     this._sent = true
   }
 
@@ -106,51 +124,18 @@ export class BunNextResponse extends BaseNextResponse<WritableStream> {
     return this._sent
   }
 
-  /**
-   * Resolve the internal send promise to be a response directly
-   * @param response The response
-   */
-  public async resolveAsResponse(response: Response) {
-    this.sendPromise.resolve(response)
-    this._sent = true
+  public toResponse() {
+    return this.sendPromise.promise
   }
 
-  public async toResponse() {
-    const response = await this.sendPromise.promise
+  public onClose(/*callback: () => void*/) {
+    throw new Error('Not implemented')
+    // if (this.closeController.isClosed) {
+    //   throw new Error(
+    //     'Cannot call onClose on a BunNextResponse that is already closed'
+    //   )
+    // }
 
-    if (response) {
-      return response
-    }
-
-    const body = this.textBody ?? this.transformStream.readable
-
-    let bodyInit: BodyInit = body
-
-    // if the response is streaming, onClose() can still be called after this point.
-    const canAddListenersLater = typeof bodyInit !== 'string'
-    const shouldTrackBody =
-      canAddListenersLater || this.closeController.listeners > 0
-
-    if (shouldTrackBody) {
-      bodyInit = trackBodyConsumed(body, () => {
-        this.closeController.dispatchClose()
-      })
-    }
-
-    return new Response(bodyInit, {
-      headers: this.headers,
-      status: this.statusCode,
-      statusText: this.statusMessage,
-    })
-  }
-
-  public onClose(callback: () => void) {
-    if (this.closeController.isClosed) {
-      throw new Error(
-        'Cannot call onClose on a BunNextResponse that is already closed'
-      )
-    }
-
-    return this.closeController.onClose(callback)
+    // return this.closeController.onClose(callback)
   }
 }

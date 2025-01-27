@@ -35,7 +35,7 @@ export class WebNextRequest extends BaseNextRequest<ReadableStream | null> {
   }
 }
 
-export class WebNextResponse extends BaseNextResponse<WritableStream> {
+export class WebNextResponse extends BaseNextResponse {
   private headers = new Headers()
   private textBody: string | undefined = undefined
 
@@ -45,7 +45,7 @@ export class WebNextResponse extends BaseNextResponse<WritableStream> {
   public statusMessage: string | undefined
 
   constructor(public transformStream = new TransformStream()) {
-    super(transformStream.writable)
+    super()
   }
 
   setHeader(name: string, value: string | string[]): this {

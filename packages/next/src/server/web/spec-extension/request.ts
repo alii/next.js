@@ -1,7 +1,7 @@
 import type { I18NConfig } from '../../config-shared'
+import { RemovedPageError, RemovedUAError } from '../error'
 import { NextURL } from '../next-url'
 import { toNodeOutgoingHttpHeaders, validateURL } from '../utils'
-import { RemovedUAError, RemovedPageError } from '../error'
 import { RequestCookies } from './cookies'
 
 export const INTERNALS = Symbol('internal request')
@@ -19,20 +19,26 @@ export class NextRequest extends Request {
   }
 
   constructor(input: URL | RequestInfo, init: RequestInit = {}) {
-    const url =
-      typeof input !== 'string' && 'url' in input ? input.url : String(input)
-    validateURL(url)
-    if (input instanceof Request) super(input, init)
-    else super(url, init)
+    const url = validateURL(
+      typeof input !== 'string' && 'url' in input ? input.url : input
+    )
+
+    if (input instanceof Request || input instanceof URL) {
+      super(input, init)
+    } else {
+      super(url, init)
+    }
+
     const nextUrl = new NextURL(url, {
       headers: toNodeOutgoingHttpHeaders(this.headers),
       nextConfig: init.nextConfig,
     })
+
     this[INTERNALS] = {
       cookies: new RequestCookies(this.headers),
       nextUrl,
       url: process.env.__NEXT_NO_MIDDLEWARE_URL_NORMALIZE
-        ? url
+        ? url.toString()
         : nextUrl.toString(),
     }
   }

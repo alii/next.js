@@ -44,12 +44,10 @@ export abstract class BaseNextRequest<Body = any> {
   }
 }
 
-export abstract class BaseNextResponse<Destination = any> {
+export abstract class BaseNextResponse {
   abstract statusCode: number | undefined
   abstract statusMessage: string | undefined
   abstract get sent(): boolean
-
-  constructor(public destination: Destination) {}
 
   /**
    * Sets a value for the header overwriting existing values

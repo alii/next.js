@@ -141,7 +141,7 @@ export function toNodeOutgoingHttpHeaders(
 export function validateURL(url: string | URL): string {
   try {
     return String(new URL(String(url)))
-  } catch (error: any) {
+  } catch (error: unknown) {
     throw new Error(
       `URL is malformed "${String(
         url

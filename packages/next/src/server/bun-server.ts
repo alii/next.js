@@ -69,6 +69,10 @@ export interface BunNextServerOptions {
   distDir: string
   publicDir: string
 
+  port: number
+  hostname: string
+  staticAssets: Record<`/${string}`, Response>
+
   buildId: string
   appPathsManifest: PagesManifest | DeepReadonly<PagesManifest>
   nextFontManifest: NextFontManifest | DeepReadonly<NextFontManifest>
@@ -91,8 +95,8 @@ declare namespace Bun {
   export interface ServeOptions {
     port: number
     hostname: string
-    static: Record<string, Response>
     fetch: (request: Request, server: Bun.Server) => Promise<Response>
+    static: Record<string, Response>
   }
 
   export interface Glob {
@@ -119,7 +123,13 @@ export class BunNextServer extends BaseServer<
     MiddlewareRouteMatch
   >()
 
-  private async collectStaticAssets(): Promise<Record<`/${string}`, Response>> {
+  private static async collectStaticAssets({
+    publicDir,
+    distDir,
+  }: {
+    publicDir: string
+    distDir: string
+  }): Promise<Record<`/${string}`, Response>> {
     const staticAssets: Record<`/${string}`, Response> = {}
 
     async function glob(
@@ -142,13 +152,8 @@ export class BunNextServer extends BaseServer<
     }
 
     const [publicFiles, assets] = await Promise.all([
-      glob(this.serverOptions.publicDir, './**/*', (path) => path),
-
-      glob(
-        this.serverOptions.distDir,
-        './static/**/*',
-        (path) => '/_next' + path
-      ),
+      glob(publicDir, './**/*', (path) => path),
+      glob(distDir, './static/**/*', (path) => '/_next' + path),
     ])
 
     for await (const [blob, path] of [...publicFiles, ...assets]) {
@@ -197,9 +202,18 @@ export class BunNextServer extends BaseServer<
       join(dir, '.next', PRERENDER_MANIFEST)
     )
 
-    const server = new BunNextServer({
+    const staticAssets = await BunNextServer.collectStaticAssets({
+      publicDir: join(dir, CLIENT_PUBLIC_FILES_PATH),
+      distDir: join(dir, '.next'),
+    })
+
+    return new BunNextServer({
       conf,
       distDir: join(dir, '.next'),
+
+      port,
+      hostname,
+      staticAssets,
 
       buildId: BUILD_ID,
       publicDir: join(dir, CLIENT_PUBLIC_FILES_PATH),
@@ -215,39 +229,6 @@ export class BunNextServer extends BaseServer<
         buildId: BUILD_ID,
       },
     })
-
-    // bunServer.reload({
-    //   ...options,
-    //   static: {
-    //     ...options.static,
-    //     [path]: response,
-    //   },
-    // })
-
-    const handler = server.getRequestHandler()
-    const staticAssets = await server.collectStaticAssets()
-
-    const fetch: Bun.ServeOptions['fetch'] = async (rawRequest) => {
-      const url = new URL(rawRequest.url)
-
-      const request = new BunNextRequest(url, rawRequest)
-      const response = new BunNextResponse()
-
-      await handler(request, response)
-
-      return response.toResponse()
-    }
-
-    const options: Bun.ServeOptions = {
-      port,
-      hostname,
-      static: staticAssets,
-      fetch,
-    }
-
-    const bunServer = Bun.serve(options)
-
-    return bunServer
   }
 
   private static getMiddlewareMatcher(
@@ -269,8 +250,39 @@ export class BunNextServer extends BaseServer<
     return matcher
   }
 
+  private readonly bunServer: Bun.Server
+
+  public get url() {
+    return this.bunServer.url
+  }
+
   public constructor(options: BunNextServerOptions) {
     super(options)
+
+    const handler = this.getRequestHandler()
+
+    const bunServerOptions: Bun.ServeOptions = {
+      port: options.port,
+      hostname: options.hostname,
+      static: options.staticAssets,
+      fetch: async (rawRequest) => {
+        const request = new BunNextRequest(new URL(rawRequest.url), rawRequest)
+        const response = new BunNextResponse()
+
+        await handler(request, response)
+
+        const res = await response.toResponse()
+
+        if (response.isStaticAsset) {
+          bunServerOptions.static[request.url] = res
+          this.bunServer.reload(bunServerOptions)
+        }
+
+        return res
+      },
+    }
+
+    this.bunServer = Bun.serve(bunServerOptions)
   }
 
   protected getPublicDir(): string {
@@ -360,11 +372,6 @@ export class BunNextServer extends BaseServer<
     )
   }
 
-  private static readonly byteLengthEncoder = new TextEncoder()
-  private static fastByteLength(str: string): number {
-    return BunNextServer.byteLengthEncoder.encode(str).buffer.byteLength
-  }
-
   protected async sendRenderResult(
     _req: BunNextRequest,
     res: BunNextResponse,
@@ -397,22 +404,17 @@ export class BunNextServer extends BaseServer<
     }
 
     if (options.result.isDynamic) {
-      options.result.pipeTo(res.destination)
-      res.send()
+      res.resolveAsStreamOrTextOrResponse(options.result.toBodyInit())
     } else {
-      const payload = options.result.toUnchunkedString()
+      res.isStaticAsset = true
 
-      res.setHeader(
-        'Content-Length',
-        String(BunNextServer.fastByteLength(payload))
-      )
+      const payload = options.result.toUnchunkedString()
 
       if (options.generateEtags) {
         res.setHeader('ETag', generateETag(payload))
       }
 
-      res.body(payload)
-      res.send()
+      res.resolveAsStreamOrTextOrResponse(payload)
     }
   }
 

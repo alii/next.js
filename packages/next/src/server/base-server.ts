@@ -2498,9 +2498,7 @@ export default abstract class Server<
                     signalFromNodeResponse(node.res.originalResponse)
                   )
                 },
-                bun: (bun) => {
-                  return bun.req.toNextRequest()
-                },
+                bun: (bun) => bun.req.toNextRequest(),
                 web: () => {
                   throw new Error(
                     'Invariant: App Route Route Modules cannot be used with the edge runtime'
@@ -2576,7 +2574,7 @@ export default abstract class Server<
                 )
               },
               bun: async (bunRes) => {
-                await bunRes.resolveAsResponse(response)
+                bunRes.resolveAsStreamOrTextOrResponse(response)
               },
               web: async () => {
                 throw new Error(
@@ -2598,12 +2596,12 @@ export default abstract class Server<
 
             Log.error(err)
 
-            const fatal500 = new Response(null, { status: 500 })
-
             // Otherwise, send a 500 response.
             await matchOnRes(res, {
-              node: (nodeRes) => sendResponse(req, nodeRes, fatal500),
-              bun: (bunRes) => bunRes.resolveAsResponse(fatal500),
+              node: (nodeRes) =>
+                sendResponse(req, nodeRes, new Response(null, { status: 500 })),
+              bun: async (bunRes) =>
+                bunRes.resolveAsStreamOrTextOrResponse(null),
               web: () => {
                 throw new Error(
                   'WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime'
@@ -2622,8 +2620,10 @@ export default abstract class Server<
             await matchOnRes(res, {
               node: (nodeRes) =>
                 sendResponse(req, nodeRes, new Response(null, { status: 400 })),
-              bun: (bunRes) =>
-                bunRes.resolveAsResponse(new Response(null, { status: 400 })),
+              bun: async (bunRes) => {
+                bunRes.statusCode = 400
+                bunRes.resolveAsStreamOrTextOrResponse(null)
+              },
               web: () => {
                 throw new Error(
                   'WebNextResponse may not be used inside renderToResponseWithComponents'
@@ -3448,7 +3448,7 @@ export default abstract class Server<
           )
         },
         bun: async (bunRes) => {
-          bunRes.resolveAsResponse(
+          bunRes.resolveAsStreamOrTextOrResponse(
             new Response(cachedData.body, {
               headers,
               status: cachedData.status || 200,

@@ -1,14 +1,14 @@
-import type { ServerResponse, IncomingMessage } from 'http'
-import type { Writable, Readable } from 'stream'
+import type { IncomingMessage, ServerResponse } from 'http'
+import type { Readable } from 'stream'
 
-import { SYMBOL_CLEARED_COOKIES } from '../api-utils'
 import type { NextApiRequestCookies } from '../api-utils'
+import { SYMBOL_CLEARED_COOKIES } from '../api-utils'
 
-import { NEXT_REQUEST_META } from '../request-meta'
 import type { RequestMeta } from '../request-meta'
+import { NEXT_REQUEST_META } from '../request-meta'
 
-import { BaseNextRequest, BaseNextResponse, type FetchMetric } from './index'
 import type { OutgoingHttpHeaders } from 'node:http'
+import { BaseNextRequest, BaseNextResponse, type FetchMetric } from './index'
 
 type Req = IncomingMessage & {
   [NEXT_REQUEST_META]?: RequestMeta
@@ -72,7 +72,7 @@ export class NodeNextRequest extends BaseNextRequest<Readable> {
   }
 }
 
-export class NodeNextResponse extends BaseNextResponse<Writable> {
+export class NodeNextResponse extends BaseNextResponse {
   private textBody: string | undefined = undefined
 
   public [SYMBOL_CLEARED_COOKIES]?: boolean
@@ -88,7 +88,7 @@ export class NodeNextResponse extends BaseNextResponse<Writable> {
   constructor(
     private _res: ServerResponse & { [SYMBOL_CLEARED_COOKIES]?: boolean }
   ) {
-    super(_res)
+    super()
   }
 
   get sent() {

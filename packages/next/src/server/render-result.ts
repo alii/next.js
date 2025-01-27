@@ -240,6 +240,30 @@ export default class RenderResult<
     this.response = responses
   }
 
+  public toBodyInit(): ReadableStream<Uint8Array> | string | null {
+    if (
+      typeof this.response === 'string' ||
+      this.response === null ||
+      this.response instanceof ReadableStream
+    ) {
+      return this.response
+    }
+
+    if (Array.isArray(this.response)) {
+      return chainStreams(...this.response)
+    }
+
+    if (Buffer.isBuffer(this.response)) {
+      return streamFromBuffer(this.response)
+    }
+
+    this.response satisfies never
+
+    throw new Error(
+      'Invariant: unknown response type for RenderResult.toBodyInit(). This is a bug in Next.js'
+    )
+  }
+
   /**
    * Pipes the response to a writable stream. This will close/cancel the
    * writable stream if an error is encountered. If this doesn't throw, then
