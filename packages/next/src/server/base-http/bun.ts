@@ -1,7 +1,6 @@
 import type { OutgoingHttpHeaders } from 'node:http'
 import { DetachedPromise } from '../../lib/detached-promise'
 import { NextRequest } from '../web/exports'
-// import { CloseController } from '../web/web-on-close'
 import { BaseNextRequest, BaseNextResponse, type FetchMetric } from './index'
 
 export class BunNextRequest extends BaseNextRequest<ReadableStream<Uint8Array> | null> {
@@ -31,8 +30,6 @@ declare interface BunHeadersExtension extends Headers {
 
 export class BunNextResponse extends BaseNextResponse {
   private headers = new Headers() as BunHeadersExtension
-
-  // private readonly closeController = new CloseController()
 
   public statusCode: number | undefined
   public statusMessage: string | undefined
@@ -112,8 +109,6 @@ export class BunNextResponse extends BaseNextResponse {
       )
     }
 
-    // this.closeController.dispatchClose()
-
     this._sent = true
   }
 
@@ -126,13 +121,6 @@ export class BunNextResponse extends BaseNextResponse {
   }
 
   public onClose(/*callback: () => void*/) {
-    throw new Error('Not implemented')
-    // if (this.closeController.isClosed) {
-    //   throw new Error(
-    //     'Cannot call onClose on a BunNextResponse that is already closed'
-    //   )
-    // }
-
-    // return this.closeController.onClose(callback)
+    throw new Error('onClose() is not implemented in BunNextResponse')
   }
 }
