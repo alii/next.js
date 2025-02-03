@@ -26,19 +26,19 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
 
-import type { NextConfig } from '../../../types'
+import path, { isAbsolute } from 'path'
+import type { LoaderContext } from 'webpack'
 import type { WebpackLayerName } from '../../../lib/constants'
+import type { NextConfig } from '../../../types'
+import { isResourceInPackages } from '../../handle-externals'
 import { isWasm, transform } from '../../swc'
 import { getLoaderSWCOptions } from '../../swc/options'
-import path, { isAbsolute } from 'path'
 import { babelIncludeRegexes } from '../../webpack-config'
-import { isResourceInPackages } from '../../handle-externals'
 import type { TelemetryLoaderContext } from '../plugins/telemetry-plugin/telemetry-plugin'
 import {
   updateTelemetryLoaderCtxFromTransformOutput,
   type SwcTransformTelemetryOutput,
 } from '../plugins/telemetry-plugin/update-telemetry-loader-context-from-swc'
-import type { LoaderContext } from 'webpack'
 
 const maybeExclude = (
   excludePath: string,

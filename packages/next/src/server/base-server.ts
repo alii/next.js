@@ -1847,7 +1847,7 @@ export default abstract class Server<
       return this.render404(req, res, parsedUrl)
     }
 
-    return this.pipe(async (ctx) => this.renderToResponse(ctx), {
+    return this.pipe((ctx) => this.renderToResponse(ctx), {
       req,
       res,
       pathname,

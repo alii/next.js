@@ -1,5 +1,5 @@
 import * as nextEnv from '@next/env'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { ParsedUrlQuery } from 'querystring'
 import {
   APP_PATHS_MANIFEST,
@@ -147,7 +147,7 @@ export class BunNextServer extends BaseServer<
     }
 
     const [publicFiles, assets] = await Promise.all([
-      glob(publicDir, './**/*', (path) => path),
+      glob(publicDir, './**/*', (path) => resolve('/', path)),
       glob(distDir, './static/**/*', (path) => join('/_next', path)),
     ])
 
@@ -201,6 +201,8 @@ export class BunNextServer extends BaseServer<
       publicDir: join(dir, CLIENT_PUBLIC_FILES_PATH),
       distDir: join(dir, '.next'),
     })
+
+    console.log(staticAssets)
 
     return new BunNextServer({
       conf,
@@ -440,7 +442,7 @@ export class BunNextServer extends BaseServer<
     const dev = !!this.renderOpts.dev
     // incremental-cache is request specific
     // although can have shared caches in module scope
-    // per-cache  r
+    // per-cache
     return new IncrementalCache({
       dev,
       requestHeaders,
