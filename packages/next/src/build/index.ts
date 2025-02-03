@@ -10,7 +10,6 @@ import '../lib/setup-exception-listeners'
 import { loadEnvConfig, type LoadedEnvFiles } from '@next/env'
 import crypto from 'crypto'
 import { existsSync, promises as fs } from 'fs'
-import { Sema } from 'next/dist/compiled/async-sema'
 import devalue from 'next/dist/compiled/devalue'
 import findUp from 'next/dist/compiled/find-up'
 import { nanoid } from 'next/dist/compiled/nanoid/index.cjs'
@@ -47,7 +46,6 @@ import loadCustomRoutes, {
 import { nonNullable } from '../lib/non-nullable'
 import { bold, yellow } from '../lib/picocolors'
 import { recursiveDelete } from '../lib/recursive-delete'
-import { validateTurboNextConfig } from '../lib/turbopack-warning'
 import { verifyPartytownSetup } from '../lib/verify-partytown-setup'
 import { Worker } from '../lib/worker'
 import type { __ApiPreviewProps } from '../server/api-utils'
@@ -151,12 +149,7 @@ import * as Log from './output/log'
 import type { AppSegmentConfig } from './segment-config/app/app-segment-config'
 import createSpinner from './spinner'
 import type { PrerenderedRoute } from './static-paths/types'
-import {
-  createDefineEnv,
-  loadBindings,
-  lockfilePatchPromise,
-  teardownTraceSubscriber,
-} from './swc'
+import { lockfilePatchPromise, teardownTraceSubscriber } from './swc'
 import { startTypeChecking } from './type-check'
 import type { PageInfo, PageInfos } from './utils'
 import {
@@ -185,18 +178,6 @@ import { FallbackMode, fallbackModeToFallbackField } from '../lib/fallback'
 import { traceMemoryUsage } from '../lib/memory/trace'
 import { generateEncryptionKeyBase64 } from '../server/app-render/encryption-utils-server'
 import type { NextEnabledDirectories } from '../server/base-server'
-import {
-  formatIssue,
-  getTurbopackJsConfig,
-  handleEntrypoints,
-  handlePagesErrorRoute,
-  handleRouteType,
-  isPersistentCachingEnabled,
-  isRelevantWarning,
-  type EntryIssuesMap,
-} from '../server/dev/turbopack-utils'
-import { TurbopackManifestLoader } from '../server/dev/turbopack/manifest-loader'
-import type { Entrypoints } from '../server/dev/turbopack/types'
 import { getStartServerInfo, logStartInfo } from '../server/lib/app-info-log'
 import {
   checkIsAppPPREnabled,
@@ -214,9 +195,10 @@ import { HTML_LIMITED_BOT_UA_RE_STRING } from '../shared/lib/router/utils/is-bot
 import uploadTrace from '../trace/upload-trace'
 import { collectBuildTraces } from './collect-build-traces'
 import { formatManifest } from './manifests/formatter/format-manifest'
-import { createProgress } from './progress'
 import { RenderingMode } from './rendering-mode'
+import { turbopackBuild } from './turbopack-build'
 import type { BuildTraceContext } from './webpack/plugins/next-trace-entrypoints-plugin'
+import type { UseCacheTrackerKey } from './webpack/plugins/telemetry-plugin/use-cache-tracker-utils'
 
 type Fallback = null | boolean | string
 
@@ -816,8 +798,6 @@ async function getBuildId(
     .traceAsyncFn(() => generateBuildId(config.generateBuildId, nanoid))
 }
 
-const IS_TURBOPACK_BUILD = process.env.TURBOPACK && process.env.TURBOPACK_BUILD
-
 export default async function build(
   dir: string,
   reactProductionProfiling = false,
@@ -878,6 +858,7 @@ export default async function build(
         config.distDir = '.next'
       }
       const distDir = path.join(dir, config.distDir)
+      NextBuildContext.distDir = distDir
       setGlobal('phase', PHASE_PRODUCTION_BUILD)
       setGlobal('distDir', distDir)
 
@@ -900,7 +881,7 @@ export default async function build(
         ...rewrites.fallback,
       ]
       const hasRewrites = combinedRewrites.length > 0
-
+      NextBuildContext.hasRewrites = hasRewrites
       NextBuildContext.originalRewrites = config._originalRewrites
       NextBuildContext.originalRedirects = config._originalRedirects
 
@@ -1184,7 +1165,7 @@ export default async function build(
       }
 
       // Turbopack already handles conflicting app and page routes.
-      if (!IS_TURBOPACK_BUILD) {
+      if (!turboNextBuild) {
         const numConflictingAppPaths = conflictingAppPagePaths.length
         if (mappedAppPages && numConflictingAppPaths > 0) {
           Log.error(
@@ -1401,284 +1382,6 @@ export default async function build(
         PAGES_MANIFEST
       )
 
-      async function turbopackBuild(): Promise<{
-        duration: number
-        buildTraceContext: undefined
-        shutdownPromise: Promise<void>
-      }> {
-        if (!IS_TURBOPACK_BUILD) {
-          throw new Error("next build doesn't support turbopack yet")
-        }
-
-        await validateTurboNextConfig({
-          dir,
-          isDev: false,
-        })
-
-        const startTime = process.hrtime()
-        const bindings = await loadBindings(config?.experimental?.useWasmBinary)
-        const dev = false
-
-        // const supportedBrowsers = await getSupportedBrowsers(dir, dev)
-        const supportedBrowsers = [
-          'last 1 Chrome versions, last 1 Firefox versions, last 1 Safari versions, last 1 Edge versions',
-        ]
-
-        const project = await bindings.turbo.createProject(
-          {
-            projectPath: dir,
-            rootPath:
-              config.experimental?.turbo?.root ||
-              config.outputFileTracingRoot ||
-              dir,
-            distDir,
-            nextConfig: config,
-            jsConfig: await getTurbopackJsConfig(dir, config),
-            watch: {
-              enable: false,
-            },
-            dev,
-            env: process.env as Record<string, string>,
-            defineEnv: createDefineEnv({
-              isTurbopack: true,
-              clientRouterFilters,
-              config,
-              dev,
-              distDir,
-              fetchCacheKeyPrefix: config.experimental.fetchCacheKeyPrefix,
-              hasRewrites,
-              // Implemented separately in Turbopack, doesn't have to be passed here.
-              middlewareMatchers: undefined,
-            }),
-            buildId: NextBuildContext.buildId!,
-            encryptionKey: NextBuildContext.encryptionKey!,
-            previewProps: NextBuildContext.previewProps!,
-            browserslistQuery: supportedBrowsers.join(', '),
-          },
-          {
-            persistentCaching: isPersistentCachingEnabled(config),
-            memoryLimit: config.experimental.turbo?.memoryLimit,
-          }
-        )
-
-        await fs.mkdir(path.join(distDir, 'server'), { recursive: true })
-        await fs.mkdir(path.join(distDir, 'static', buildId), {
-          recursive: true,
-        })
-        await fs.writeFile(
-          path.join(distDir, 'package.json'),
-          JSON.stringify(
-            {
-              type: 'commonjs',
-            },
-            null,
-            2
-          )
-        )
-
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const entrypointsSubscription = project.entrypointsSubscribe()
-        const currentEntrypoints: Entrypoints = {
-          global: {
-            app: undefined,
-            document: undefined,
-            error: undefined,
-
-            middleware: undefined,
-            instrumentation: undefined,
-          },
-
-          app: new Map(),
-          page: new Map(),
-        }
-
-        const currentEntryIssues: EntryIssuesMap = new Map()
-
-        const manifestLoader = new TurbopackManifestLoader({
-          buildId,
-          distDir,
-          encryptionKey,
-        })
-
-        const entrypointsResult = await entrypointsSubscription.next()
-        if (entrypointsResult.done) {
-          throw new Error('Turbopack did not return any entrypoints')
-        }
-        entrypointsSubscription.return?.().catch(() => {})
-
-        const entrypoints = entrypointsResult.value
-
-        const topLevelErrors: {
-          message: string
-        }[] = []
-        for (const issue of entrypoints.issues) {
-          topLevelErrors.push({
-            message: formatIssue(issue),
-          })
-        }
-
-        if (topLevelErrors.length > 0) {
-          throw new Error(
-            `Turbopack build failed with ${
-              topLevelErrors.length
-            } issues:\n${topLevelErrors.map((e) => e.message).join('\n')}`
-          )
-        }
-
-        await handleEntrypoints({
-          entrypoints,
-          currentEntrypoints,
-          currentEntryIssues,
-          manifestLoader,
-          devRewrites: undefined,
-          productionRewrites: customRoutes.rewrites,
-          logErrors: false,
-        })
-
-        const progress = createProgress(
-          currentEntrypoints.page.size + currentEntrypoints.app.size + 1,
-          'Building'
-        )
-        const promises: Promise<any>[] = []
-
-        // Concurrency will start at INITIAL_CONCURRENCY and
-        // slowly ramp up to CONCURRENCY by increasing the
-        // concurrency by 1 every time a task is completed.
-        const INITIAL_CONCURRENCY = 5
-        const CONCURRENCY = 10
-
-        const sema = new Sema(INITIAL_CONCURRENCY)
-        let remainingRampup = CONCURRENCY - INITIAL_CONCURRENCY
-        const enqueue = (fn: () => Promise<void>) => {
-          promises.push(
-            (async () => {
-              await sema.acquire()
-              try {
-                await fn()
-              } finally {
-                sema.release()
-                if (remainingRampup > 0) {
-                  remainingRampup--
-                  sema.release()
-                }
-                progress.run()
-              }
-            })()
-          )
-        }
-
-        if (!appDirOnly) {
-          for (const [page, route] of currentEntrypoints.page) {
-            enqueue(() =>
-              handleRouteType({
-                dev,
-                page,
-                pathname: page,
-                route,
-
-                currentEntryIssues,
-                entrypoints: currentEntrypoints,
-                manifestLoader,
-                devRewrites: undefined,
-                productionRewrites: customRoutes.rewrites,
-                logErrors: false,
-              })
-            )
-          }
-        }
-
-        for (const [page, route] of currentEntrypoints.app) {
-          enqueue(() =>
-            handleRouteType({
-              page,
-              dev: false,
-              pathname: normalizeAppPath(page),
-              route,
-              currentEntryIssues,
-              entrypoints: currentEntrypoints,
-              manifestLoader,
-              devRewrites: undefined,
-              productionRewrites: customRoutes.rewrites,
-              logErrors: false,
-            })
-          )
-        }
-
-        enqueue(() =>
-          handlePagesErrorRoute({
-            dev: false,
-            currentEntryIssues,
-            entrypoints: currentEntrypoints,
-            manifestLoader,
-            devRewrites: undefined,
-            productionRewrites: customRoutes.rewrites,
-            logErrors: false,
-          })
-        )
-        await Promise.all(promises)
-
-        await manifestLoader.writeManifests({
-          devRewrites: undefined,
-          productionRewrites: customRoutes.rewrites,
-          entrypoints: currentEntrypoints,
-        })
-
-        const errors: {
-          page: string
-          message: string
-        }[] = []
-        const warnings: {
-          page: string
-          message: string
-        }[] = []
-        for (const [page, entryIssues] of currentEntryIssues) {
-          for (const issue of entryIssues.values()) {
-            if (issue.severity !== 'warning') {
-              errors.push({
-                page,
-                message: formatIssue(issue),
-              })
-            } else {
-              if (isRelevantWarning(issue)) {
-                warnings.push({
-                  page,
-                  message: formatIssue(issue),
-                })
-              }
-            }
-          }
-        }
-
-        const shutdownPromise = project.shutdown()
-
-        if (warnings.length > 0) {
-          Log.warn(
-            `Turbopack build collected ${warnings.length} warnings:\n${warnings
-              .map((e) => {
-                return 'Page: ' + e.page + '\n' + e.message
-              })
-              .join('\n')}`
-          )
-        }
-
-        if (errors.length > 0) {
-          throw new Error(
-            `Turbopack build failed with ${errors.length} errors:\n${errors
-              .map((e) => {
-                return 'Page: ' + e.page + '\n' + e.message
-              })
-              .join('\n')}`
-          )
-        }
-
-        const time = process.hrtime(startTime)
-        return {
-          duration: time[0] + time[1] / 1e9,
-          buildTraceContext: undefined,
-          shutdownPromise,
-        }
-      }
-
       let buildTraceContext: undefined | BuildTraceContext
       let buildTracesPromise: Promise<any> | undefined = undefined
 
@@ -1727,7 +1430,7 @@ export default async function build(
             duration: compilerDuration,
             shutdownPromise: p,
             ...rest
-          } = await turbopackBuild()
+          } = await turbopackBuild(true)
           shutdownPromise = p
           traceMemoryUsage('Finished build', nextBuildSpan)
 
@@ -2506,7 +2209,11 @@ export default async function build(
           path.join(SERVER_DIRECTORY, `${INSTRUMENTATION_HOOK_FILENAME}.js`)
         )
         // If there's edge routes, append the edge instrumentation hook
-        if (edgeRuntimeAppCount || edgeRuntimePagesCount) {
+        // Turbopack generates this chunk with a hashed name and references it in middleware-manifest.
+        if (
+          !process.env.TURBOPACK &&
+          (edgeRuntimeAppCount || edgeRuntimePagesCount)
+        ) {
           instrumentationHookEntryFiles.push(
             path.join(
               SERVER_DIRECTORY,
@@ -3282,7 +2989,7 @@ export default async function build(
                     : normalizeRouteRegex(
                         getNamedRouteRegex(dataRoute, {
                           prefixRouteKeys: false,
-                          includeExtraParts: true,
+                          includeSuffix: true,
                           excludeOptionalTrailingSlash: true,
                         }).re.source
                       ),
@@ -3292,7 +2999,7 @@ export default async function build(
                     : normalizeRouteRegex(
                         getNamedRouteRegex(prefetchDataRoute, {
                           prefixRouteKeys: false,
-                          includeExtraParts: true,
+                          includeSuffix: true,
                           excludeOptionalTrailingSlash: true,
                         }).re.source
                       ),
@@ -3679,6 +3386,18 @@ export default async function build(
             NextBuildContext.telemetryState.packagesUsedInServerSideProps
           )
         )
+        const useCacheTracker = NextBuildContext.telemetryState.useCacheTracker
+
+        for (const [key, value] of Object.entries(useCacheTracker)) {
+          telemetry.record(
+            eventBuildFeatureUsage([
+              {
+                featureName: key as UseCacheTrackerKey,
+                invocationCount: value,
+              },
+            ])
+          )
+        }
       }
 
       if (ssgPages.size > 0 || appDir) {
@@ -3710,7 +3429,7 @@ export default async function build(
             dataRouteRegex: normalizeRouteRegex(
               getNamedRouteRegex(dataRoute, {
                 prefixRouteKeys: true,
-                includeExtraParts: true,
+                includeSuffix: true,
                 excludeOptionalTrailingSlash: true,
               }).re.source
             ),

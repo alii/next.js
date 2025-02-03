@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, thread, time::Duration};
+use std::{io::Write, path::PathBuf, sync::Arc, thread, time::Duration};
 
 use anyhow::{anyhow, bail, Context, Result};
 use napi::{
@@ -206,6 +206,8 @@ pub struct NapiTurboEngineOptions {
     pub persistent_caching: Option<bool>,
     /// An upper bound of memory that turbopack will attempt to stay under.
     pub memory_limit: Option<f64>,
+    /// Track dependencies between tasks. If false, any change during build will error.
+    pub dependency_tracking: Option<bool>,
 }
 
 impl From<NapiWatchOptions> for WatchOptions {
@@ -377,38 +379,34 @@ pub async fn project_new(
         .map(|m| m as usize)
         .unwrap_or(usize::MAX);
     let persistent_caching = turbo_engine_options.persistent_caching.unwrap_or_default();
+    let dependency_tracking = turbo_engine_options.dependency_tracking.unwrap_or(true);
     let turbo_tasks = create_turbo_tasks(
         PathBuf::from(&options.dist_dir),
         persistent_caching,
         memory_limit,
+        dependency_tracking,
     )?;
-    if !persistent_caching {
-        use std::io::Write;
-        let stats_path = std::env::var_os("NEXT_TURBOPACK_TASK_STATISTICS");
-        if let Some(stats_path) = stats_path {
-            let Some(backend) = turbo_tasks.memory_backend() else {
-                return Err(anyhow!("task statistics require a memory backend").into());
-            };
-            let task_stats = backend.task_statistics().enable().clone();
-            exit.on_exit(async move {
-                tokio::task::spawn_blocking(move || {
-                    let mut file = std::fs::File::create(&stats_path)
-                        .with_context(|| format!("failed to create or open {stats_path:?}"))?;
-                    serde_json::to_writer(&file, &task_stats)
-                        .context("failed to serialize or write task statistics")?;
-                    file.flush().context("failed to flush file")
-                })
-                .await
-                .unwrap()
-                .unwrap();
-            });
-        }
+    let stats_path = std::env::var_os("NEXT_TURBOPACK_TASK_STATISTICS");
+    if let Some(stats_path) = stats_path {
+        let task_stats = turbo_tasks.task_statistics().enable().clone();
+        exit.on_exit(async move {
+            tokio::task::spawn_blocking(move || {
+                let mut file = std::fs::File::create(&stats_path)
+                    .with_context(|| format!("failed to create or open {stats_path:?}"))?;
+                serde_json::to_writer(&file, &task_stats)
+                    .context("failed to serialize or write task statistics")?;
+                file.flush().context("failed to flush file")
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        });
     }
     let options: ProjectOptions = options.into();
     let container = turbo_tasks
         .run_once(async move {
             let project = ProjectContainer::new("next.js".into(), options.dev);
-            let project = project.resolve().await?;
+            let project = project.to_resolved().await?;
             project.initialize(options).await?;
             Ok(project)
         })
@@ -423,7 +421,7 @@ pub async fn project_new(
     Ok(External::new_with_size_hint(
         ProjectInstance {
             turbo_tasks,
-            container,
+            container: *container,
             exit_receiver: tokio::sync::Mutex::new(Some(exit_receiver)),
         },
         100,
@@ -505,10 +503,35 @@ pub async fn project_update(
     Ok(())
 }
 
+/// Runs exit handlers for the project registered using the [`ExitHandler`] API.
+///
+/// This is called by `project_shutdown`, so if you're calling that API, you shouldn't call this
+/// one.
+#[napi]
+pub async fn project_on_exit(
+    #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
+) {
+    project_on_exit_internal(&project).await
+}
+
+async fn project_on_exit_internal(project: &ProjectInstance) {
+    let exit_receiver = project.exit_receiver.lock().await.take();
+    exit_receiver
+        .expect("`project.onExitSync` must only be called once")
+        .run_exit_handler()
+        .await;
+}
+
+/// Runs `project_on_exit`, and then waits for turbo_tasks to gracefully shut down.
+///
+/// This is used in builds where it's important that we completely persist turbo-tasks to disk, but
+/// it's skipped in the development server (`project_on_exit` is used instead with a short timeout),
+/// where we prioritize fast exit and user responsiveness over all else.
 #[napi]
 pub async fn project_shutdown(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
 ) {
+    project_on_exit_internal(&project).await;
     project.turbo_tasks.stop_and_wait().await;
 }
 
@@ -659,16 +682,13 @@ struct EntrypointsWithIssues {
     effects: Arc<Effects>,
 }
 
-#[turbo_tasks::function]
-async fn get_entrypoints_with_issues(
+#[turbo_tasks::function(operation)]
+async fn get_entrypoints_with_issues_operation(
     container: ResolvedVc<ProjectContainer>,
 ) -> Result<Vc<EntrypointsWithIssues>> {
     let entrypoints_operation =
         EntrypointsOperation::new(project_container_entrypoints_operation(container));
-    let entrypoints = entrypoints_operation
-        .connect()
-        .strongly_consistent()
-        .await?;
+    let entrypoints = entrypoints_operation.read_strongly_consistent().await?;
     let issues = get_issues(entrypoints_operation).await?;
     let diagnostics = get_diagnostics(entrypoints_operation).await?;
     let effects = Arc::new(get_effects(entrypoints_operation).await?);
@@ -702,13 +722,16 @@ pub fn project_entrypoints_subscribe(
         func,
         move || {
             async move {
-                let operation = get_entrypoints_with_issues(container);
+                let entrypoints_with_issues_op =
+                    get_entrypoints_with_issues_operation(container.to_resolved().await?);
                 let EntrypointsWithIssues {
                     entrypoints,
                     issues,
                     diagnostics,
                     effects,
-                } = &*operation.strongly_consistent().await?;
+                } = &*entrypoints_with_issues_op
+                    .read_strongly_consistent()
+                    .await?;
                 effects.apply().await?;
                 Ok((entrypoints.clone(), issues.clone(), diagnostics.clone()))
             }
@@ -771,17 +794,17 @@ struct HmrUpdateWithIssues {
     effects: Arc<Effects>,
 }
 
-#[turbo_tasks::function]
-async fn hmr_update(
+#[turbo_tasks::function(operation)]
+async fn hmr_update_with_issues_operation(
     project: ResolvedVc<Project>,
     identifier: RcStr,
     state: ResolvedVc<VersionState>,
 ) -> Result<Vc<HmrUpdateWithIssues>> {
-    let update_operation = project_hmr_update_operation(project, identifier, state);
-    let update = update_operation.connect().strongly_consistent().await?;
-    let issues = get_issues(update_operation).await?;
-    let diagnostics = get_diagnostics(update_operation).await?;
-    let effects = Arc::new(get_effects(update_operation).await?);
+    let update_op = project_hmr_update_operation(project, identifier, state);
+    let update = update_op.read_strongly_consistent().await?;
+    let issues = get_issues(update_op).await?;
+    let diagnostics = get_diagnostics(update_op).await?;
+    let effects = Arc::new(get_effects(update_op).await?);
     Ok(HmrUpdateWithIssues {
         update,
         issues,
@@ -819,11 +842,15 @@ pub fn project_hmr_events(
                 let identifier: RcStr = outer_identifier.clone().into();
                 let session = session.clone();
                 async move {
-                    let project = project.project().resolve().await?;
-                    let state = project.hmr_version_state(identifier.clone(), session);
+                    let project = project.project().to_resolved().await?;
+                    let state = project
+                        .hmr_version_state(identifier.clone(), session)
+                        .to_resolved()
+                        .await?;
 
-                    let operation = hmr_update(project, identifier.clone(), state);
-                    let update = operation.strongly_consistent().await?;
+                    let update_op =
+                        hmr_update_with_issues_operation(project, identifier.clone(), state);
+                    let update = update_op.read_strongly_consistent().await?;
                     let HmrUpdateWithIssues {
                         update,
                         issues,
@@ -898,18 +925,15 @@ struct HmrIdentifiersWithIssues {
     effects: Arc<Effects>,
 }
 
-#[turbo_tasks::function]
-async fn get_hmr_identifiers_with_issues(
+#[turbo_tasks::function(operation)]
+async fn get_hmr_identifiers_with_issues_operation(
     container: ResolvedVc<ProjectContainer>,
 ) -> Result<Vc<HmrIdentifiersWithIssues>> {
-    let hmr_identifiers_operation = project_container_hmr_identifiers_operation(container);
-    let hmr_identifiers = hmr_identifiers_operation
-        .connect()
-        .strongly_consistent()
-        .await?;
-    let issues = get_issues(hmr_identifiers_operation).await?;
-    let diagnostics = get_diagnostics(hmr_identifiers_operation).await?;
-    let effects = Arc::new(get_effects(hmr_identifiers_operation).await?);
+    let hmr_identifiers_op = project_container_hmr_identifiers_operation(container);
+    let hmr_identifiers = hmr_identifiers_op.read_strongly_consistent().await?;
+    let issues = get_issues(hmr_identifiers_op).await?;
+    let diagnostics = get_diagnostics(hmr_identifiers_op).await?;
+    let effects = Arc::new(get_effects(hmr_identifiers_op).await?);
     Ok(HmrIdentifiersWithIssues {
         identifiers: hmr_identifiers,
         issues,
@@ -937,13 +961,16 @@ pub fn project_hmr_identifiers_subscribe(
         turbo_tasks.clone(),
         func,
         move || async move {
-            let operation = get_hmr_identifiers_with_issues(container);
+            let hmr_identifiers_with_issues_op =
+                get_hmr_identifiers_with_issues_operation(container.to_resolved().await?);
             let HmrIdentifiersWithIssues {
                 identifiers,
                 issues,
                 diagnostics,
                 effects,
-            } = &*operation.strongly_consistent().await?;
+            } = &*hmr_identifiers_with_issues_op
+                .read_strongly_consistent()
+                .await?;
             effects.apply().await?;
 
             Ok((identifiers.clone(), issues.clone(), diagnostics.clone()))
@@ -1186,43 +1213,44 @@ pub async fn project_trace_source(
 
             let project_root_uri =
                 uri_from_file(project.container.project().project_root_path(), None).await? + "/";
-            let (file, original_file, is_internal) =
-                if let Some(source_file) = original_file.strip_prefix(&project_root_uri) {
-                    // Client code uses file://
-                    (
-                        get_relative_path_to(&current_directory_file_url, &original_file)
-                            // TODO(sokra) remove this to include a ./ here to make it a relative path
-                            .trim_start_matches("./")
-                            .to_string(),
-                        Some(source_file.to_string()),
-                        false,
-                    )
-                } else if let Some(source_file) =
-                    original_file.strip_prefix(&*SOURCE_MAP_PREFIX_PROJECT)
-                {
-                    // Server code uses turbopack://[project]
-                    // TODO should this also be file://?
-                    (
-                        get_relative_path_to(
-                            &current_directory_file_url,
-                            &format!("{}{}", project_root_uri, source_file),
-                        )
+            let (file, original_file, is_internal) = if let Some(source_file) =
+                original_file.strip_prefix(&project_root_uri)
+            {
+                // Client code uses file://
+                (
+                    get_relative_path_to(&current_directory_file_url, &original_file)
                         // TODO(sokra) remove this to include a ./ here to make it a relative path
                         .trim_start_matches("./")
                         .to_string(),
-                        Some(source_file.to_string()),
-                        false,
+                    Some(source_file.to_string()),
+                    false,
+                )
+            } else if let Some(source_file) =
+                original_file.strip_prefix(&*SOURCE_MAP_PREFIX_PROJECT)
+            {
+                // Server code uses turbopack://[project]
+                // TODO should this also be file://?
+                (
+                    get_relative_path_to(
+                        &current_directory_file_url,
+                        &format!("{}{}", project_root_uri, source_file),
                     )
-                } else if let Some(source_file) = original_file.strip_prefix(SOURCE_MAP_PREFIX) {
-                    // All other code like turbopack://[turbopack] is internal code
-                    (source_file.to_string(), None, true)
-                } else {
-                    bail!(
-                        "Original file ({}) outside project ({})",
-                        original_file,
-                        project_root_uri
-                    )
-                };
+                    // TODO(sokra) remove this to include a ./ here to make it a relative path
+                    .trim_start_matches("./")
+                    .to_string(),
+                    Some(source_file.to_string()),
+                    false,
+                )
+            } else if let Some(source_file) = original_file.strip_prefix(SOURCE_MAP_PREFIX) {
+                // All other code like turbopack://[turbopack] is internal code
+                (source_file.to_string(), None, true)
+            } else {
+                bail!(
+                    "Original file ({}) outside project ({})",
+                    original_file,
+                    project_root_uri
+                )
+            };
 
             Ok(Some(StackFrame {
                 file,
@@ -1261,7 +1289,7 @@ pub async fn project_get_source_for_asset(
                 bail!("Cannot find source for asset {}", file_path);
             };
 
-            Ok(Some(source_content.content().to_str()?.to_string()))
+            Ok(Some(source_content.content().to_str()?.into_owned()))
         })
         .await
         .map_err(|e| napi::Error::from_reason(PrettyPrintError(&e).to_string()))?;
@@ -1283,7 +1311,7 @@ pub async fn project_get_source_map(
                 return Ok(None);
             };
 
-            Ok(Some(map.to_rope().await?.to_str()?.to_string()))
+            Ok(Some(map.to_rope().await?.to_str()?.into_owned()))
         })
         .await
         .map_err(|e| napi::Error::from_reason(PrettyPrintError(&e).to_string()))?;
@@ -1299,16 +1327,4 @@ pub fn project_get_source_map_sync(
     within_runtime_if_available(|| {
         tokio::runtime::Handle::current().block_on(project_get_source_map(project, file_path))
     })
-}
-
-/// Runs exit handlers for the project registered using the [`ExitHandler`] API.
-#[napi]
-pub async fn project_on_exit(
-    #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
-) {
-    let exit_receiver = project.exit_receiver.lock().await.take();
-    exit_receiver
-        .expect("`project.onExitSync` must only be called once")
-        .run_exit_handler()
-        .await;
 }

@@ -4,7 +4,7 @@ import { HotlinkedText } from '../hot-linked-text'
 import { EditorLink } from './editor-link'
 import { ExternalIcon } from '../../icons/external'
 import { noop as css } from '../../helpers/noop-template'
-import { getFrameSource } from '../../helpers/stack-frame'
+import { getFrameSource } from '../../../../internal/helpers/stack-frame'
 import { useOpenInEditor } from '../../helpers/use-open-in-editor'
 import { FileIcon } from '../../icons/file'
 
@@ -100,8 +100,8 @@ export const Terminal: React.FC<TerminalProps> = function Terminal({
         >
           <span>
             <FileIcon />
-            {getFrameSource(stackFrame)} @{' '}
-            <HotlinkedText text={stackFrame.methodName} />
+            {getFrameSource(stackFrame)}
+            {/* TODO: Unlike the CodeFrame component, the `methodName` is unavailable. */}
           </span>
           <ExternalIcon width={16} height={16} />
         </p>

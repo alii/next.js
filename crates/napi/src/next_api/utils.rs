@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap, env, future::Future, ops::Deref, path::PathBuf, sync::Arc, time::Duration,
+    collections::HashMap, future::Future, ops::Deref, path::PathBuf, sync::Arc, time::Duration,
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -10,9 +10,12 @@ use napi::{
 };
 use serde::Serialize;
 use turbo_tasks::{
-    trace::TraceRawVcs, OperationVc, ReadRef, TaskId, TryJoinIterExt, TurboTasks, UpdateInfo, Vc,
+    task_statistics::TaskStatisticsApi, trace::TraceRawVcs, OperationVc, ReadRef, TaskId,
+    TryJoinIterExt, TurboTasks, TurboTasksApi, UpdateInfo, Vc,
 };
-use turbo_tasks_backend::{default_backing_storage, DefaultBackingStorage};
+use turbo_tasks_backend::{
+    default_backing_storage, noop_backing_storage, DefaultBackingStorage, NoopBackingStorage,
+};
 use turbo_tasks_fs::FileContent;
 use turbopack_core::{
     diagnostics::{Diagnostic, DiagnosticContextExt, PlainDiagnostic},
@@ -25,7 +28,7 @@ use crate::util::log_internal_error_and_inform;
 
 #[derive(Clone)]
 pub enum NextTurboTasks {
-    Memory(Arc<TurboTasks<turbo_tasks_memory::MemoryBackend>>),
+    Memory(Arc<TurboTasks<turbo_tasks_backend::TurboTasksBackend<NoopBackingStorage>>>),
     PersistentCaching(
         Arc<TurboTasks<turbo_tasks_backend::TurboTasksBackend<DefaultBackingStorage>>>,
     ),
@@ -106,17 +109,17 @@ impl NextTurboTasks {
         }
     }
 
-    pub fn memory_backend(&self) -> Option<&turbo_tasks_memory::MemoryBackend> {
-        match self {
-            NextTurboTasks::Memory(turbo_tasks) => Some(turbo_tasks.backend()),
-            NextTurboTasks::PersistentCaching(_) => None,
-        }
-    }
-
     pub async fn stop_and_wait(&self) {
         match self {
             NextTurboTasks::Memory(turbo_tasks) => turbo_tasks.stop_and_wait().await,
             NextTurboTasks::PersistentCaching(turbo_tasks) => turbo_tasks.stop_and_wait().await,
+        }
+    }
+
+    pub fn task_statistics(&self) -> &TaskStatisticsApi {
+        match self {
+            NextTurboTasks::Memory(turbo_tasks) => turbo_tasks.task_statistics(),
+            NextTurboTasks::PersistentCaching(turbo_tasks) => turbo_tasks.task_statistics(),
         }
     }
 }
@@ -124,7 +127,8 @@ impl NextTurboTasks {
 pub fn create_turbo_tasks(
     output_path: PathBuf,
     persistent_caching: bool,
-    memory_limit: usize,
+    _memory_limit: usize,
+    dependency_tracking: bool,
 ) -> Result<NextTurboTasks> {
     Ok(if persistent_caching {
         let dirty_suffix = if crate::build::GIT_CLEAN
@@ -156,17 +160,22 @@ pub fn create_turbo_tasks(
                     } else {
                         turbo_tasks_backend::StorageMode::ReadWrite
                     }),
+                    dependency_tracking,
                     ..Default::default()
                 },
                 default_backing_storage(&output_path.join("cache/turbopack"), &version_info)?,
             ),
         ))
     } else {
-        let mut backend = turbo_tasks_memory::MemoryBackend::new(memory_limit);
-        if env::var_os("NEXT_TURBOPACK_PRINT_TASK_INVALIDATION").is_some() {
-            backend.print_task_invalidation(true);
-        }
-        NextTurboTasks::Memory(TurboTasks::new(backend))
+        NextTurboTasks::Memory(TurboTasks::new(
+            turbo_tasks_backend::TurboTasksBackend::new(
+                turbo_tasks_backend::BackendOptions {
+                    storage_mode: None,
+                    ..Default::default()
+                },
+                noop_backing_storage(),
+            ),
+        ))
     })
 }
 

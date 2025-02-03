@@ -1,15 +1,17 @@
 import * as React from 'react'
 
+import { useState } from 'react'
 import { ShadowPortal } from '../internal/components/shadow-portal'
-import { BuildError } from '../internal/container/build-error'
-import { Errors } from '../internal/container/errors'
 import { Base } from '../internal/styles/base'
 import { ComponentStyles } from '../internal/styles/component-styles'
 import { CssReset } from '../internal/styles/css-reset'
 
-import { ErrorBoundary } from '../../pages/error-boundary'
+import { DevOverlayErrorBoundary } from './error-boundary'
 import { usePagesReactDevOverlay } from '../../pages/hooks'
 import { Colors } from '../internal/styles/colors'
+import { ErrorOverlay } from '../internal/components/errors/error-overlay/error-overlay'
+import { DevToolsIndicator } from '../internal/components/errors/dev-tools-indicator/dev-tools-indicator'
+import { useErrorHook } from '../internal/container/runtime-error/use-error-hook'
 
 export type ErrorType = 'runtime' | 'build'
 
@@ -20,49 +22,48 @@ interface ReactDevOverlayProps {
 export default function ReactDevOverlay({ children }: ReactDevOverlayProps) {
   const {
     isMounted,
-    hasBuildError,
-    hasRuntimeErrors,
     state,
     onComponentError,
+    hasRuntimeErrors,
+    hasBuildError,
   } = usePagesReactDevOverlay()
 
-  const isTurbopack = !!process.env.TURBOPACK
+  const { readyErrors, totalErrorCount } = useErrorHook({
+    state,
+    isAppDir: false,
+  })
+
+  const [isErrorOverlayOpen, setIsErrorOverlayOpen] = useState(true)
 
   return (
     <>
-      <ErrorBoundary isMounted={isMounted} onError={onComponentError}>
+      <DevOverlayErrorBoundary isMounted={isMounted} onError={onComponentError}>
         {children ?? null}
-      </ErrorBoundary>
-      <ShadowPortal>
-        <CssReset />
-        <Base />
-        <Colors />
-        <ComponentStyles />
+      </DevOverlayErrorBoundary>
 
-        {hasBuildError ? (
-          <BuildError
-            message={state.buildError!}
-            versionInfo={state.versionInfo}
-            isTurbopack={isTurbopack}
+      {isMounted && (
+        <ShadowPortal>
+          <CssReset />
+          <Base />
+          <Colors />
+          <ComponentStyles />
+
+          <DevToolsIndicator
+            state={state}
+            errorCount={totalErrorCount}
+            setIsErrorOverlayOpen={setIsErrorOverlayOpen}
           />
-        ) : hasRuntimeErrors ? (
-          <Errors
-            isAppDir={false}
-            errors={state.errors}
-            versionInfo={state.versionInfo}
-            initialDisplayState={'fullscreen'}
-            isTurbopack={isTurbopack}
-          />
-        ) : (
-          <Errors
-            isAppDir={false}
-            errors={state.errors}
-            versionInfo={state.versionInfo}
-            initialDisplayState={'minimized'}
-            isTurbopack={isTurbopack}
-          />
-        )}
-      </ShadowPortal>
+
+          {(hasRuntimeErrors || hasBuildError) && (
+            <ErrorOverlay
+              state={state}
+              readyErrors={readyErrors}
+              isErrorOverlayOpen={isErrorOverlayOpen}
+              setIsErrorOverlayOpen={setIsErrorOverlayOpen}
+            />
+          )}
+        </ShadowPortal>
+      )}
     </>
   )
 }

@@ -622,13 +622,5 @@
   "621": "Required root params (%s) were not provided in generateStaticParams for %s, please provide at least one value for each.",
   "622": "A required root parameter (%s) was not provided in generateStaticParams for %s, please provide at least one value.",
   "623": "Invalid quality prop (%s) on \\`next/image\\` does not match \\`images.qualities\\` configured in your \\`next.config.js\\`\\nSee more info: https://nextjs.org/docs/messages/next-image-unconfigured-qualities",
-  "624": "Internal Next.js Error: createMutableActionQueue was called more than once",
-  "625": "\"next start\" does not work with \"output: bun\" configuration. Use \"bun .next/bun/server.js\" instead.",
-  "626": "Invariant: App Route Route Modules cannot be used with the edge runtime",
-  "627": "Invalid request or response",
-  "628": "WebNextResponse may not be used inside renderToResponseWithComponents",
-  "629": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime",
-  "630": "Cannot call onClose on a BunNextResponse that is already closed",
-  "631": "Invariant: unknown response type for RenderResult.toBodyInit(). This is a bug in Next.js",
-  "632": "Not implemented"
+  "624": "Internal Next.js Error: createMutableActionQueue was called more than once"
 }
