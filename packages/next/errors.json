@@ -636,5 +636,6 @@
   "635": "Invariant: unknown response type for RenderResult.toBodyInit(). This is a bug in Next.js",
   "636": "Invalid request or response",
   "637": "WebNextResponse may not be used inside renderToResponseWithComponents",
-  "638": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime"
+  "638": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime",
+  "639": "onClose() is not implemented in BunNextResponse"
 }
