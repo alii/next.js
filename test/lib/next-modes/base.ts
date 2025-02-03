@@ -1,18 +1,18 @@
+import cheerio from 'cheerio'
+import { ChildProcess } from 'child_process'
+import escapeStringRegexp from 'escape-string-regexp'
+import { once } from 'events'
+import { existsSync, promises as fs, rmSync } from 'fs'
+import type { NextConfig } from 'next'
+import { fetchViaHTTP, findPort, renderViaHTTP } from 'next-test-utils'
+import { Span } from 'next/dist/trace'
 import os from 'os'
 import path from 'path'
-import { existsSync, promises as fs, rmSync } from 'fs'
 import treeKill from 'tree-kill'
-import type { NextConfig } from 'next'
-import { FileRef, isNextDeploy } from '../e2e-utils'
-import { ChildProcess } from 'child_process'
-import { createNextInstall } from '../create-next-install'
-import { Span } from 'next/dist/trace'
-import webdriver from '../next-webdriver'
-import { renderViaHTTP, fetchViaHTTP, findPort } from 'next-test-utils'
-import cheerio from 'cheerio'
-import { once } from 'events'
 import { BrowserInterface } from '../browsers/base'
-import escapeStringRegexp from 'escape-string-regexp'
+import { createNextInstall } from '../create-next-install'
+import { FileRef, isNextDeploy } from '../e2e-utils'
+import webdriver from '../next-webdriver'
 
 type Event = 'stdout' | 'stderr' | 'error' | 'destroy'
 export type InstallCommand =
@@ -293,6 +293,7 @@ export class NextInstance {
                     functions.push(
                       val
                         .toString()
+
                         .replace(
                           new RegExp(`${val.name}[\\s]{0,}\\(`),
                           'function('

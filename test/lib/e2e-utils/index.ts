@@ -1,11 +1,11 @@
-import path from 'path'
 import assert from 'assert'
-import { flushAllTraces, setGlobal, trace } from 'next/dist/trace'
 import { PHASE_DEVELOPMENT_SERVER } from 'next/constants'
+import { flushAllTraces, setGlobal, trace } from 'next/dist/trace'
+import path from 'path'
 import { NextInstance, NextInstanceOpts } from '../next-modes/base'
+import { NextDeployInstance } from '../next-modes/next-deploy'
 import { NextDevInstance } from '../next-modes/next-dev'
 import { NextStartInstance } from '../next-modes/next-start'
-import { NextDeployInstance } from '../next-modes/next-deploy'
 import { shouldRunTurboDevTest } from '../next-test-utils'
 
 export type { NextInstance }

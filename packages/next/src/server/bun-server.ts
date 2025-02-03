@@ -142,18 +142,13 @@ export class BunNextServer extends BaseServer<
       const paths = await Array.fromAsync(scan)
 
       return paths.map((path) => {
-        const withoutDotSlash = path.startsWith('./') ? path.slice(1) : path
-
-        return [
-          Bun.file(join(cwd, withoutDotSlash)),
-          mapPath(withoutDotSlash),
-        ] as const
+        return [Bun.file(join(cwd, path)), mapPath(path)] as const
       })
     }
 
     const [publicFiles, assets] = await Promise.all([
       glob(publicDir, './**/*', (path) => path),
-      glob(distDir, './static/**/*', (path) => '/_next' + path),
+      glob(distDir, './static/**/*', (path) => join('/_next', path)),
     ])
 
     for await (const [blob, path] of [...publicFiles, ...assets]) {
@@ -247,6 +242,7 @@ export class BunNextServer extends BaseServer<
 
     const matcher = getMiddlewareRouteMatcher(info.matchers)
     BunNextServer.MiddlewareMatcherCache.set(info, matcher)
+
     return matcher
   }
 

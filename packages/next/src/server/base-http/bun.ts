@@ -80,7 +80,7 @@ export class BunNextResponse extends BaseNextResponse {
     return this
   }
 
-  private init: string | ReadableStream | null = null
+  private init: Response | string | ReadableStream | null = null
 
   public body(value: string): this {
     this.init = value
@@ -90,13 +90,8 @@ export class BunNextResponse extends BaseNextResponse {
   public resolveAsStreamOrTextOrResponse(
     value: ReadableStream | string | Response | null
   ) {
-    if (value instanceof Response) {
-      this.sendPromise.resolve(value)
-      this._sent = true
-    } else {
-      this.init = value
-      this.send()
-    }
+    this.init = value
+    this.send()
   }
 
   public isStaticAsset = false
@@ -105,15 +100,17 @@ export class BunNextResponse extends BaseNextResponse {
 
   private _sent = false
   public send() {
-    let init: BodyInit | null = this.init
-
-    this.sendPromise.resolve(
-      new Response(init, {
-        headers: this.headers,
-        status: this.statusCode,
-        statusText: this.statusMessage,
-      })
-    )
+    if (this.init instanceof Response) {
+      this.sendPromise.resolve(this.init)
+    } else {
+      this.sendPromise.resolve(
+        new Response(this.init, {
+          headers: this.headers,
+          status: this.statusCode,
+          statusText: this.statusMessage,
+        })
+      )
+    }
 
     // this.closeController.dispatchClose()
 

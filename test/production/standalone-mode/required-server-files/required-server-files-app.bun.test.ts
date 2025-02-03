@@ -12,7 +12,7 @@ import {
 } from 'next-test-utils'
 import { join } from 'path'
 
-describe('required server files app router', () => {
+describe("required server files app router with output: 'bun'", () => {
   let next: NextInstance
   let server: ChildProcess
   let appPort: number | string
@@ -45,23 +45,21 @@ describe('required server files app router', () => {
         eslint: {
           ignoreDuringBuilds: true,
         },
-        output: 'standalone',
+        output: 'bun',
       },
     })
+
     await next.stop()
 
-    await fs.move(
-      join(next.testDir, '.next/standalone'),
-      join(next.testDir, 'standalone')
-    )
+    await fs.move(join(next.testDir, '.next/bun'), join(next.testDir, 'bun'))
     for (const file of await fs.readdir(next.testDir)) {
-      if (file !== 'standalone') {
+      if (file !== 'bun') {
         await fs.remove(join(next.testDir, file))
         console.log('removed', file)
       }
     }
     const files = glob.sync('**/*', {
-      cwd: join(next.testDir, 'standalone/.next/server/pages'),
+      cwd: join(next.testDir, 'bun/.next/server/pages'),
       dot: true,
     })
 
@@ -71,7 +69,7 @@ describe('required server files app router', () => {
       }
     }
 
-    const testServer = join(next.testDir, 'standalone/server.js')
+    const testServer = join(next.testDir, 'bun/server.js')
     await fs.writeFile(
       testServer,
       (await fs.readFile(testServer, 'utf8')).replace(

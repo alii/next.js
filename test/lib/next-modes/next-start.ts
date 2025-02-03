@@ -1,9 +1,9 @@
-import path from 'path'
-import fs from 'fs-extra'
-import { NextInstance } from './base'
 import spawn from 'cross-spawn'
+import fs from 'fs-extra'
 import { Span } from 'next/dist/trace'
+import path from 'path'
 import stripAnsi from 'strip-ansi'
+import { NextInstance } from './base'
 
 export class NextStartInstance extends NextInstance {
   private _buildId: string
