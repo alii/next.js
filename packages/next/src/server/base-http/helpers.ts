@@ -50,6 +50,8 @@ export const isNodeNextResponse = (
   res: BaseNextResponse
 ): res is NodeNextResponse => res instanceof NodeNextResponse
 
+export const isBun = typeof process.versions.bun === 'string'
+
 export const isBunNextRequest = (req: BaseNextRequest): req is BunNextRequest =>
   req instanceof BunNextRequest
 

@@ -1,7 +1,8 @@
-import { getTracer } from '../lib/trace/tracer'
-import { AppRenderSpan } from '../lib/trace/constants'
 import { DetachedPromise } from '../../lib/detached-promise'
-import { scheduleImmediate, atLeastOneTask } from '../../lib/scheduler'
+import { atLeastOneTask, scheduleImmediate } from '../../lib/scheduler'
+import { isBun } from '../base-http/helpers'
+import { AppRenderSpan } from '../lib/trace/constants'
+import { getTracer } from '../lib/trace/tracer'
 import { ENCODED_TAGS } from './encodedTags'
 import {
   indexOfUint8Array,
@@ -19,10 +20,49 @@ export type ReactReadableStream = ReadableStream<Uint8Array> & {
   allReady?: Promise<void> | undefined
 }
 
+export class BunDirectReadableStream<T> extends ReadableStream<T> {
+  public constructor(
+    pull: (
+      controller: ReadableStreamController<T> & { write: (chunk: T) => void }
+    ) => void | Promise<void>
+  ) {
+    super({
+      type: 'direct' as never,
+      pull: pull as (
+        controller: ReadableStreamController<T>
+      ) => void | Promise<void>,
+    })
+  }
+}
+
 // We can share the same encoder instance everywhere
 // Notably we cannot do the same for TextDecoder because it is stateful
 // when handling streaming data
 const encoder = new TextEncoder()
+
+export function chainStreamsBun<T>(...streams: ReadableStream<T>[]) {
+  return new BunDirectReadableStream<T>(async (controller) => {
+    for (const stream of streams) {
+      const reader = stream.getReader()
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+
+          if (done) {
+            break
+          }
+
+          controller.write(value)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    }
+
+    controller.close()
+  })
+}
 
 export function chainStreams<T>(
   ...streams: ReadableStream<T>[]
@@ -36,6 +76,10 @@ export function chainStreams<T>(
   // If we only have 1 stream we fast path it by returning just this stream
   if (streams.length === 1) {
     return streams[0]
+  }
+
+  if (isBun) {
+    return chainStreamsBun(...streams)
   }
 
   const { readable, writable } = new TransformStream()
@@ -65,6 +109,13 @@ export function chainStreams<T>(
 }
 
 export function streamFromString(str: string): ReadableStream<Uint8Array> {
+  if (isBun) {
+    return new BunDirectReadableStream((controller) => {
+      controller.write(encoder.encode(str))
+      controller.close()
+    })
+  }
+
   return new ReadableStream({
     start(controller) {
       controller.enqueue(encoder.encode(str))
@@ -73,7 +124,14 @@ export function streamFromString(str: string): ReadableStream<Uint8Array> {
   })
 }
 
-export function streamFromBuffer(chunk: Buffer): ReadableStream<Uint8Array> {
+export function streamFromBuffer(chunk: Buffer): ReadableStream<Buffer> {
+  if (isBun) {
+    return new BunDirectReadableStream<Buffer>((controller) => {
+      controller.write(chunk)
+      controller.close()
+    })
+  }
+
   return new ReadableStream({
     start(controller) {
       controller.enqueue(chunk)
@@ -85,6 +143,10 @@ export function streamFromBuffer(chunk: Buffer): ReadableStream<Uint8Array> {
 export async function streamToBuffer(
   stream: ReadableStream<Uint8Array>
 ): Promise<Buffer> {
+  if (isBun) {
+    return Buffer.from(await new Response(stream).arrayBuffer())
+  }
+
   const reader = stream.getReader()
   const chunks: Uint8Array[] = []
 

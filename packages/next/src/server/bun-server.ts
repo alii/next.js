@@ -197,23 +197,23 @@ export class BunNextServer extends BaseServer<
       join(dir, '.next', PRERENDER_MANIFEST)
     )
 
-    const staticAssets = await BunNextServer.collectStaticAssets({
-      publicDir: join(dir, CLIENT_PUBLIC_FILES_PATH),
-      distDir: join(dir, '.next'),
-    })
+    const publicDir = join(dir, CLIENT_PUBLIC_FILES_PATH)
+    const distDir = join(dir, '.next')
 
-    console.log(staticAssets)
+    const staticAssets = await BunNextServer.collectStaticAssets({
+      publicDir,
+      distDir,
+    })
 
     return new BunNextServer({
       conf,
-      distDir: join(dir, '.next'),
+      buildId: BUILD_ID,
+      publicDir,
+      distDir,
 
       port,
       hostname,
       staticAssets,
-
-      buildId: BUILD_ID,
-      publicDir: join(dir, CLIENT_PUBLIC_FILES_PATH),
 
       appPathsManifest,
       nextFontManifest,
