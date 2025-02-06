@@ -622,20 +622,5 @@
   "621": "Required root params (%s) were not provided in generateStaticParams for %s, please provide at least one value for each.",
   "622": "A required root parameter (%s) was not provided in generateStaticParams for %s, please provide at least one value.",
   "623": "Invalid quality prop (%s) on \\`next/image\\` does not match \\`images.qualities\\` configured in your \\`next.config.js\\`\\nSee more info: https://nextjs.org/docs/messages/next-image-unconfigured-qualities",
-  "624": "Internal Next.js Error: createMutableActionQueue was called more than once",
-  "625": "cacheLife() is only available with the experimental.useCache config.",
-  "626": "Invariant (SlowModuleDetectionPlugin): Unable to find the start time for a module build. This is a Next.js internal bug.",
-  "627": "Invariant (SlowModuleDetectionPlugin): Module is recorded after the report is generated. This is a Next.js internal bug.",
-  "628": "Invariant (SlowModuleDetectionPlugin): Circular dependency detected in module graph. This is a Next.js internal bug.",
-  "629": "Invariant: App Route Route Modules cannot be used with the edge runtime",
-  "630": "\"next start\" does not work with \"output: bun\" configuration. Use \"bun .next/bun/server.js\" instead.",
-  "631": "cacheTag() is only available with the experimental.useCache config.",
-  "632": "Not implemented",
-  "633": "Server Actions are not supported with static export.\\nRead more: https://nextjs.org/docs/app/building-your-application/deploying/static-exports#unsupported-features",
-  "634": "Intercepting routes are not supported with static export.\\nRead more: https://nextjs.org/docs/app/building-your-application/deploying/static-exports#unsupported-features",
-  "635": "Invariant: unknown response type for RenderResult.toBodyInit(). This is a bug in Next.js",
-  "636": "Invalid request or response",
-  "637": "WebNextResponse may not be used inside renderToResponseWithComponents",
-  "638": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime",
-  "639": "onClose() is not implemented in BunNextResponse"
+"624": "Internal Next.js Error: createMutableActionQueue was called more than once" 
 }

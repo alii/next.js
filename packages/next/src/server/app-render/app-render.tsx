@@ -1969,7 +1969,6 @@ async function renderToStream(
       ),
       isStaticGeneration: generateStaticHTML,
       getServerInsertedHTML,
-      serverInsertedHTMLToHead: true,
       validateRootLayout,
     })
   } catch (err) {
@@ -2115,7 +2114,6 @@ async function renderToStream(
           basePath: renderOpts.basePath,
           tracingMetadata: tracingMetadata,
         }),
-        serverInsertedHTMLToHead: true,
         validateRootLayout,
       })
     } catch (finalErr: any) {
@@ -2496,12 +2494,8 @@ type PrerenderToStreamResult = {
  * Determines whether we should generate static flight data.
  */
 function shouldGenerateStaticFlightData(workStore: WorkStore): boolean {
-  const { fallbackRouteParams, isStaticGeneration } = workStore
+  const { isStaticGeneration } = workStore
   if (!isStaticGeneration) return false
-
-  if (fallbackRouteParams && fallbackRouteParams.size > 0) {
-    return false
-  }
 
   return true
 }
@@ -3509,7 +3503,6 @@ async function prerenderToStream(
             ),
             isStaticGeneration: true,
             getServerInsertedHTML,
-            serverInsertedHTMLToHead: true,
             validateRootLayout,
           }),
           dynamicAccess: consumeDynamicAccess(
@@ -3835,7 +3828,6 @@ async function prerenderToStream(
           ),
           isStaticGeneration: true,
           getServerInsertedHTML,
-          serverInsertedHTMLToHead: true,
         }),
         // TODO: Should this include the SSR pass?
         collectedRevalidate: prerenderLegacyStore.revalidate,
@@ -4010,7 +4002,6 @@ async function prerenderToStream(
             basePath: renderOpts.basePath,
             tracingMetadata: tracingMetadata,
           }),
-          serverInsertedHTMLToHead: true,
           validateRootLayout,
         }),
         dynamicAccess: null,

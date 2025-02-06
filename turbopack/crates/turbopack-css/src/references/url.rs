@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::Infallible};
+use std::convert::Infallible;
 
 use anyhow::{bail, Result};
 use lightningcss::{
@@ -6,6 +6,7 @@ use lightningcss::{
     visit_types,
     visitor::{Visit, Visitor},
 };
+use rustc_hash::FxHashMap;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{debug::ValueDebug, ResolvedVc, Value, ValueToString, Vc};
 use turbopack_core::{
@@ -35,7 +36,7 @@ pub enum ReferencedAsset {
 pub struct UrlAssetReference {
     pub origin: ResolvedVc<Box<dyn ResolveOrigin>>,
     pub request: ResolvedVc<Request>,
-    pub issue_source: ResolvedVc<IssueSource>,
+    pub issue_source: IssueSource,
 }
 
 #[turbo_tasks::value_impl]
@@ -44,7 +45,7 @@ impl UrlAssetReference {
     pub fn new(
         origin: ResolvedVc<Box<dyn ResolveOrigin>>,
         request: ResolvedVc<Request>,
-        issue_source: ResolvedVc<IssueSource>,
+        issue_source: IssueSource,
     ) -> Vc<Self> {
         Self::cell(UrlAssetReference {
             origin,
@@ -89,7 +90,7 @@ impl ModuleReference for UrlAssetReference {
             *self.origin,
             *self.request,
             Value::new(ReferenceType::Url(UrlReferenceSubType::CssUrl)),
-            Some(*self.issue_source),
+            Some(self.issue_source.clone()),
             false,
         )
     }
@@ -135,7 +136,7 @@ pub async fn resolve_url_reference(
     {
         // TODO(WEB-662) This is not the correct way to get the path of the asset.
         // `asset` is on module-level, but we need the output-level asset instead.
-        let path = asset.ident().path().await?;
+        let path = asset.path().await?;
         let relative_path = context_path
             .get_relative_path_to(&path)
             .unwrap_or_else(|| format!("/{}", path.path).into());
@@ -148,14 +149,14 @@ pub async fn resolve_url_reference(
 
 pub fn replace_url_references(
     ss: &mut StyleSheetLike<'static, 'static>,
-    urls: &HashMap<RcStr, RcStr>,
+    urls: &FxHashMap<RcStr, RcStr>,
 ) {
     let mut replacer = AssetReferenceReplacer { urls };
     ss.0.visit(&mut replacer).unwrap();
 }
 
 struct AssetReferenceReplacer<'a> {
-    urls: &'a HashMap<RcStr, RcStr>,
+    urls: &'a FxHashMap<RcStr, RcStr>,
 }
 
 impl Visitor<'_> for AssetReferenceReplacer<'_> {

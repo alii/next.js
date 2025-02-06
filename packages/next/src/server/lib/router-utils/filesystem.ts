@@ -1,4 +1,5 @@
 import type {
+  FunctionsConfigManifest,
   ManifestRoute,
   PrerenderManifest,
   RoutesManifest,
@@ -21,6 +22,7 @@ import { modifyRouteRegex } from '../../../lib/redirect-status'
 import {
   APP_PATH_ROUTES_MANIFEST,
   BUILD_ID_FILE,
+  FUNCTIONS_CONFIG_MANIFEST,
   MIDDLEWARE_MANIFEST,
   PAGES_MANIFEST,
   PRERENDER_MANIFEST,
@@ -203,6 +205,11 @@ export async function setupFsCheck(opts: {
       'server',
       MIDDLEWARE_MANIFEST
     )
+    const functionsConfigManifestPath = path.join(
+      distDir,
+      'server',
+      FUNCTIONS_CONFIG_MANIFEST
+    )
     const pagesManifestPath = path.join(distDir, 'server', PAGES_MANIFEST)
     const appRoutesManifestPath = path.join(distDir, APP_PATH_ROUTES_MANIFEST)
 
@@ -217,6 +224,10 @@ export async function setupFsCheck(opts: {
     const middlewareManifest = JSON.parse(
       await fs.readFile(middlewareManifestPath, 'utf8').catch(() => '{}')
     ) as MiddlewareManifest
+
+    const functionsConfigManifest = JSON.parse(
+      await fs.readFile(functionsConfigManifestPath, 'utf8').catch(() => '{}')
+    ) as FunctionsConfigManifest
 
     const pagesManifest = JSON.parse(
       await fs.readFile(pagesManifestPath, 'utf8')
@@ -275,6 +286,12 @@ export async function setupFsCheck(opts: {
     if (middlewareManifest.middleware?.['/']?.matchers) {
       middlewareMatcher = getMiddlewareRouteMatcher(
         middlewareManifest.middleware?.['/']?.matchers
+      )
+    } else if (functionsConfigManifest?.functions['/_middleware']) {
+      middlewareMatcher = getMiddlewareRouteMatcher(
+        functionsConfigManifest.functions['/_middleware'].matchers ?? [
+          { regexp: '.*', originalSource: '/:path*' },
+        ]
       )
     }
 

@@ -2,7 +2,7 @@ import cheerio from 'cheerio'
 import { ChildProcess } from 'child_process'
 import escapeStringRegexp from 'escape-string-regexp'
 import { once } from 'events'
-import { existsSync, promises as fs, rmSync } from 'fs'
+import { existsSync, promises as fs, readFileSync, rmSync } from 'fs'
 import type { NextConfig } from 'next'
 import { fetchViaHTTP, findPort, renderViaHTTP } from 'next-test-utils'
 import { Span } from 'next/dist/trace'
@@ -520,6 +520,10 @@ export class NextInstance {
 
   public async readFile(filename: string) {
     return fs.readFile(path.join(this.testDir, filename), 'utf8')
+  }
+
+  public readFileSync(filename: string) {
+    return readFileSync(path.join(this.testDir, filename), 'utf8')
   }
 
   public async readJSON(filename: string) {

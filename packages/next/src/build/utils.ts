@@ -33,7 +33,7 @@ import stripAnsi from 'next/dist/compiled/strip-ansi'
 import textTable from 'next/dist/compiled/text-table'
 import path from 'path'
 import { createIncrementalCache } from '../export/helpers/create-incremental-cache'
-import { isClientReference } from '../lib/client-reference'
+import { isClientReference } from '../lib/client-and-server-references'
 import {
   INSTRUMENTATION_HOOK_FILENAME,
   MIDDLEWARE_FILENAME,

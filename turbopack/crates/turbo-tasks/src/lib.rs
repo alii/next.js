@@ -92,8 +92,7 @@ pub use completion::{Completion, Completions};
 pub use display::ValueToString;
 pub use effect::{apply_effects, effect, get_effects, Effects};
 pub use id::{
-    ExecutionId, FunctionId, LocalTaskId, SessionId, TaskId, TraitTypeId, ValueTypeId,
-    TRANSIENT_TASK_BIT,
+    FunctionId, LocalTaskId, SessionId, TaskId, TraitTypeId, ValueTypeId, TRANSIENT_TASK_BIT,
 };
 pub use invalidation::{
     get_invalidator, DynamicEqHash, InvalidationReason, InvalidationReasonKind,
@@ -131,6 +130,7 @@ pub use vc::{
 
 pub type FxIndexSet<T> = indexmap::IndexSet<T, BuildHasherDefault<FxHasher>>;
 pub type FxIndexMap<K, V> = indexmap::IndexMap<K, V, BuildHasherDefault<FxHasher>>;
+pub type FxDashMap<K, V> = dashmap::DashMap<K, V, BuildHasherDefault<FxHasher>>;
 
 // Copied from indexmap! and indexset!
 #[macro_export]
