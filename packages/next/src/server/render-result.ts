@@ -208,6 +208,10 @@ export default class RenderResult<
     return this.response
   }
 
+  public getInternalReadableStream(): ReadableStream<Uint8Array> {
+    return this.readable
+  }
+
   /**
    * Chains a new stream to the response. This will convert the response to an
    * array of streams if it is not already one and will add the new stream to

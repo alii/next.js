@@ -1,8 +1,8 @@
 import type { ClientReferenceManifest } from '../../build/webpack/plugins/flight-manifest-plugin'
 import type { BinaryStreamOf } from './app-render'
 
-import { htmlEscapeJsonString } from '../htmlescape'
 import type { DeepReadonly } from '../../shared/lib/deep-readonly'
+import { htmlEscapeJsonString } from '../htmlescape'
 
 const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge'
 
@@ -83,7 +83,11 @@ export function createInlinedDataReadableStream(
     type: 'bytes',
     start(controller) {
       try {
-        writeInitialInstructions(controller, startScriptTag, formState)
+        writeInitialInstructions(
+          (text) => controller.enqueue(text),
+          startScriptTag,
+          formState
+        )
       } catch (error) {
         // during encoding or enqueueing forward the error downstream
         controller.error(error)
@@ -125,12 +129,12 @@ export function createInlinedDataReadableStream(
 }
 
 function writeInitialInstructions(
-  controller: ReadableStreamDefaultController,
+  write: (chunk: Uint8Array) => void,
   scriptStart: string,
   formState: unknown | null
 ) {
   if (formState != null) {
-    controller.enqueue(
+    write(
       encoder.encode(
         `${scriptStart}(self.__next_f=self.__next_f||[]).push(${htmlEscapeJsonString(
           JSON.stringify([INLINE_FLIGHT_PAYLOAD_BOOTSTRAP])
@@ -140,7 +144,7 @@ function writeInitialInstructions(
       )
     )
   } else {
-    controller.enqueue(
+    write(
       encoder.encode(
         `${scriptStart}(self.__next_f=self.__next_f||[]).push(${htmlEscapeJsonString(
           JSON.stringify([INLINE_FLIGHT_PAYLOAD_BOOTSTRAP])

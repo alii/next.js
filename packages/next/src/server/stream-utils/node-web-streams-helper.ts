@@ -16,51 +16,81 @@ function voidCatch() {
   // and be unhandled
 }
 
+const encoder = new TextEncoder()
+
 export type ReactReadableStream = ReadableStream<Uint8Array> & {
   allReady?: Promise<void> | undefined
 }
 
+declare global {
+  interface BunUnderlyingDirectSource<T> {
+    type: 'direct'
+
+    cancel?: UnderlyingSourceCancelCallback
+
+    pull?: (
+      controller: ReadableByteStreamController & { write: (chunk: T) => void }
+    ) => void | PromiseLike<void>
+
+    start?: (
+      controller: ReadableByteStreamController & { write: (chunk: T) => void }
+    ) => any
+  }
+}
+
+declare var ReadableStream: {
+  new <R = any>(
+    underlyingSource: BunUnderlyingDirectSource<R>
+  ): ReadableStream<R>
+  new (
+    underlyingSource: UnderlyingByteSource,
+    strategy?: { highWaterMark?: number }
+  ): ReadableStream<Uint8Array>
+  new <R = any>(
+    underlyingSource: UnderlyingDefaultSource<R>,
+    strategy?: QueuingStrategy<R>
+  ): ReadableStream<R>
+  new <R = any>(
+    underlyingSource?: UnderlyingSource<R>,
+    strategy?: QueuingStrategy<R>
+  ): ReadableStream<R>
+}
+
 export class BunDirectReadableStream<T> extends ReadableStream<T> {
   public constructor(
-    pull: (
-      controller: ReadableStreamController<T> & { write: (chunk: T) => void }
-    ) => void | Promise<void>
+    underlyingSource: Omit<BunUnderlyingDirectSource<T>, 'type'>
   ) {
     super({
-      type: 'direct' as never,
-      pull: pull as (
-        controller: ReadableStreamController<T>
-      ) => void | Promise<void>,
+      type: 'direct',
+      ...underlyingSource,
     })
   }
 }
 
-// We can share the same encoder instance everywhere
-// Notably we cannot do the same for TextDecoder because it is stateful
-// when handling streaming data
-const encoder = new TextEncoder()
-
 export function chainStreamsBun<T>(...streams: ReadableStream<T>[]) {
-  return new BunDirectReadableStream<T>(async (controller) => {
-    for (const stream of streams) {
-      const reader = stream.getReader()
+  return new ReadableStream<T>({
+    type: 'direct',
+    pull: async (controller) => {
+      for (const stream of streams) {
+        const reader = stream.getReader()
 
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
 
-          if (done) {
-            break
+            if (done) {
+              break
+            }
+
+            controller.write(value)
           }
-
-          controller.write(value)
+        } finally {
+          reader.releaseLock()
         }
-      } finally {
-        reader.releaseLock()
       }
-    }
 
-    controller.close()
+      controller.close()
+    },
   })
 }
 
@@ -110,9 +140,11 @@ export function chainStreams<T>(
 
 export function streamFromString(str: string): ReadableStream<Uint8Array> {
   if (isBun) {
-    return new BunDirectReadableStream((controller) => {
-      controller.write(encoder.encode(str))
-      controller.close()
+    return new BunDirectReadableStream({
+      pull: (controller) => {
+        controller.write(encoder.encode(str))
+        controller.close()
+      },
     })
   }
 
@@ -126,9 +158,11 @@ export function streamFromString(str: string): ReadableStream<Uint8Array> {
 
 export function streamFromBuffer(chunk: Buffer): ReadableStream<Buffer> {
   if (isBun) {
-    return new BunDirectReadableStream<Buffer>((controller) => {
-      controller.write(chunk)
-      controller.close()
+    return new BunDirectReadableStream<Buffer>({
+      pull: (controller) => {
+        controller.write(chunk)
+        controller.close()
+      },
     })
   }
 

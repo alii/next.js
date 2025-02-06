@@ -115,6 +115,7 @@ import {
 import { checkIsOnDemandRevalidate } from './api-utils'
 import { stripFlightHeaders } from './app-render/strip-flight-headers'
 import {
+  isBun,
   isNodeNextRequest,
   isNodeNextResponse,
   matchOnReqRes,
@@ -170,6 +171,7 @@ import type { RouteModule } from './route-modules/route-module'
 import { sendResponse } from './send-response'
 import { getUtils } from './server-utils'
 import { ENCODED_TAGS } from './stream-utils/encodedTags'
+import { BunDirectReadableStream } from './stream-utils/node-web-streams-helper'
 import { isBlockedPage } from './utils'
 import type NextWebServer from './web-server'
 import { NextRequestHint } from './web/adapter'
@@ -3603,39 +3605,64 @@ export default abstract class Server<
       // dynamic data can pipe to that will attach the dynamic data to the end
       // of the response.
       const transformer = new TransformStream<Uint8Array, Uint8Array>()
-      body.chain(transformer.readable)
 
       // Perform the render again, but this time, provide the postponed state.
       // We don't await because we want the result to start streaming now, and
       // we've already chained the transformer's readable to the render result.
-      doRender({
+      const renderPromise = doRender({
         postponed: cachedData.postponed,
         pagesFallback: undefined,
         // This is a resume render, not a fallback render, so we don't need to
         // set this.
         fallbackRouteParams: null,
+      }).then(async (result) => {
+        if (!result) {
+          throw new Error('Invariant: expected a result to be returned')
+        }
+
+        if (result.value?.kind !== CachedRouteKind.APP_PAGE) {
+          throw new Error(
+            `Invariant: expected a page response, got ${result.value?.kind}`
+          )
+        }
+
+        return result.value.html
       })
-        .then(async (result) => {
-          if (!result) {
-            throw new Error('Invariant: expected a result to be returned')
-          }
 
-          if (result.value?.kind !== CachedRouteKind.APP_PAGE) {
-            throw new Error(
-              `Invariant: expected a page response, got ${result.value?.kind}`
-            )
-          }
+      if (isBun) {
+        body.chain(
+          new BunDirectReadableStream<Uint8Array>({
+            async pull(controller) {
+              try {
+                const html = await renderPromise
 
-          // Pipe the resume result to the transformer.
-          await result.value.html.pipeTo(transformer.writable)
-        })
-        .catch((err) => {
-          // An error occurred during piping or preparing the render, abort
-          // the transformers writer so we can terminate the stream.
-          transformer.writable.abort(err).catch((e) => {
-            console.error("couldn't abort transformer", e)
+                for await (const chunk of html.getInternalReadableStream()) {
+                  controller.enqueue(chunk)
+                }
+
+                controller.close()
+              } catch (e) {
+                controller.error(e)
+              }
+            },
           })
-        })
+        )
+      } else {
+        body.chain(transformer.readable)
+
+        renderPromise
+          .then(async (html) => {
+            // Pipe the resume result to the transformer.
+            await html.pipeTo(transformer.writable)
+          })
+          .catch((err) => {
+            // An error occurred during piping or preparing the render, abort
+            // the transformers writer so we can terminate the stream.
+            transformer.writable.abort(err).catch((e) => {
+              console.error("couldn't abort transformer", e)
+            })
+          })
+      }
 
       return {
         type: 'html',
