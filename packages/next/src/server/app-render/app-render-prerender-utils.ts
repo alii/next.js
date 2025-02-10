@@ -426,6 +426,7 @@ export class ReactServerPrerenderResult {
         `Cannot \`${expression}\` on a ReactServerPrerenderResult that has already been consumed.`
       )
     }
+
     return this._chunks
   }
 
@@ -468,6 +469,20 @@ function createUnclosingStream(
   chunks: Array<Uint8Array>
 ): ReadableStream<Uint8Array> {
   let i = 0
+
+  // if (isBun) {
+  //   return new BunDirectReadableStream({
+  //     async pull(controller) {
+  //       if (i < chunks.length) {
+  //         controller.write(chunks[i++])
+  //       }
+  //       // we intentionally keep the stream open. The consumer will clear
+  //       // out chunks once finished and the remaining memory will be GC'd
+  //       // when this object goes out of scope
+  //     },
+  //   })
+  // }
+
   return new ReadableStream({
     async pull(controller) {
       if (i < chunks.length) {
@@ -484,6 +499,18 @@ function createClosingStream(
   chunks: Array<Uint8Array>
 ): ReadableStream<Uint8Array> {
   let i = 0
+
+  // if (isBun) {
+  //   return new BunDirectReadableStream({
+  //     async pull(controller) {
+  //       if (i < chunks.length) {
+  //         controller.write(chunks[i++])
+  //       } else {
+  //         controller.close()
+  //       }
+  //     },
+  //   })
+  // } else {
   return new ReadableStream({
     async pull(controller) {
       if (i < chunks.length) {
@@ -493,4 +520,5 @@ function createClosingStream(
       }
     },
   })
+  // }
 }

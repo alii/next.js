@@ -3,6 +3,8 @@ import { atLeastOneTask, scheduleImmediate } from '../../lib/scheduler'
 import { isBun } from '../base-http/helpers'
 import { AppRenderSpan } from '../lib/trace/constants'
 import { getTracer } from '../lib/trace/tracer'
+import type { BunReadableWritablePair } from './bun'
+import { BunDirectReadableStream } from './bun'
 import { ENCODED_TAGS } from './encodedTags'
 import {
   indexOfUint8Array,
@@ -22,54 +24,17 @@ export type ReactReadableStream = ReadableStream<Uint8Array> & {
   allReady?: Promise<void> | undefined
 }
 
-declare global {
-  interface BunUnderlyingDirectSource<T> {
-    type: 'direct'
-
-    cancel?: UnderlyingSourceCancelCallback
-
-    pull?: (
-      controller: ReadableByteStreamController & { write: (chunk: T) => void }
-    ) => void | PromiseLike<void>
-
-    start?: (
-      controller: ReadableByteStreamController & { write: (chunk: T) => void }
-    ) => any
-  }
-}
-
-declare var ReadableStream: {
-  new <R = any>(
-    underlyingSource: BunUnderlyingDirectSource<R>
-  ): ReadableStream<R>
-  new (
-    underlyingSource: UnderlyingByteSource,
-    strategy?: { highWaterMark?: number }
-  ): ReadableStream<Uint8Array>
-  new <R = any>(
-    underlyingSource: UnderlyingDefaultSource<R>,
-    strategy?: QueuingStrategy<R>
-  ): ReadableStream<R>
-  new <R = any>(
-    underlyingSource?: UnderlyingSource<R>,
-    strategy?: QueuingStrategy<R>
-  ): ReadableStream<R>
-}
-
-export class BunDirectReadableStream<T> extends ReadableStream<T> {
-  public constructor(
-    underlyingSource: Omit<BunUnderlyingDirectSource<T>, 'type'>
-  ) {
-    super({
-      type: 'direct',
-      ...underlyingSource,
-    })
-  }
+export function fastTransformStream<T, U>(
+  transformer: BunDirectTransformer<T, U>
+): BunReadableWritablePair<T, U> | TransformStream<T, U> {
+  return isBun
+    ? new TransformStream(transformer)
+    : // ? new BunReadableWritablePair(transformer)
+      new TransformStream(transformer)
 }
 
 export function chainStreamsBun<T>(...streams: ReadableStream<T>[]) {
-  return new ReadableStream<T>({
-    type: 'direct',
+  return new BunDirectReadableStream<T>({
     pull: async (controller) => {
       for (const stream of streams) {
         const reader = stream.getReader()
@@ -200,6 +165,10 @@ export async function streamToString(
   stream: ReadableStream<Uint8Array>,
   signal?: AbortSignal
 ): Promise<string> {
+  if (isBun) {
+    return Bun.readableStreamToText(stream)
+  }
+
   const decoder = new TextDecoder('utf-8', { fatal: true })
   let string = ''
 
@@ -297,7 +266,7 @@ function createHeadInsertionTransformStream(
   // we won't want to insert any server HTML at all
   let hasBytes = false
 
-  return new TransformStream({
+  return fastTransformStream({
     async transform(chunk, controller) {
       hasBytes = true
 
@@ -482,7 +451,7 @@ const CLOSE_TAG = '</body></html>'
 function createMoveSuffixStream(): TransformStream<Uint8Array, Uint8Array> {
   let foundSuffix = false
 
-  return new TransformStream({
+  return fastTransformStream({
     transform(chunk, controller) {
       if (foundSuffix) {
         return controller.enqueue(chunk)
@@ -527,7 +496,7 @@ function createStripDocumentClosingTagsTransform(): TransformStream<
   Uint8Array,
   Uint8Array
 > {
-  return new TransformStream({
+  return fastTransformStream({
     transform(chunk, controller) {
       // We rely on the assumption that chunks will never break across a code unit.
       // This is reasonable because we currently concat all of React's output from a single
@@ -565,7 +534,8 @@ export function createRootLayoutValidatorStream(): TransformStream<
 > {
   let foundHtml = false
   let foundBody = false
-  return new TransformStream({
+
+  return fastTransformStream({
     async transform(chunk, controller) {
       // Peek into the streamed chunk to see if the tags are present.
       if (
