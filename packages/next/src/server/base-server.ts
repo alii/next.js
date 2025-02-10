@@ -102,7 +102,7 @@ import { isDynamicRoute } from '../shared/lib/router/utils'
 import { normalizeAppPath } from '../shared/lib/router/utils/app-paths'
 import { getNextPathnameInfo } from '../shared/lib/router/utils/get-next-pathname-info'
 import getRouteFromAssetPath from '../shared/lib/router/utils/get-route-from-asset-path'
-import { isBot } from '../shared/lib/router/utils/is-bot'
+import { getBotType, isBot } from '../shared/lib/router/utils/is-bot'
 import { parseUrl as parseUrlUtil } from '../shared/lib/router/utils/parse-url'
 import { removePathPrefix } from '../shared/lib/router/utils/remove-path-prefix'
 import { removeTrailingSlash } from '../shared/lib/router/utils/remove-trailing-slash'
@@ -135,7 +135,10 @@ import {
 } from './lib/revalidate'
 import { decodePathParams } from './lib/router-utils/decode-path-params'
 import { getIsServerAction } from './lib/server-action-request-meta'
-import { shouldServeStreamingMetadata } from './lib/streaming-metadata'
+import {
+  isHtmlBotRequest,
+  shouldServeStreamingMetadata,
+} from './lib/streaming-metadata'
 import { toRoute } from './lib/to-route'
 import { BaseServerSpan } from './lib/trace/constants'
 import { getTracer, isBubbledError, SpanKind } from './lib/trace/tracer'
@@ -1770,6 +1773,7 @@ export default abstract class Server<
       renderOpts: {
         ...this.renderOpts,
         supportsDynamicResponse: !isBotRequest,
+        botType: getBotType(ua),
         serveStreamingMetadata: shouldServeStreamingMetadata(
           ua,
           this.renderOpts.experimental
@@ -2077,6 +2081,11 @@ export default abstract class Server<
       }
     }
 
+    const isHtmlBot = isHtmlBotRequest(req)
+    if (isHtmlBot) {
+      this.renderOpts.serveStreamingMetadata = false
+    }
+
     if (
       hasFallback ||
       staticPaths?.includes(resolvedUrlPathname) ||
@@ -2087,6 +2096,11 @@ export default abstract class Server<
       isSSG = true
     } else if (!this.renderOpts.dev) {
       isSSG ||= !!prerenderManifest.routes[toRoute(pathname)]
+      if (isHtmlBot) {
+        // When it's html limited bots request, disable SSG
+        // and perform the full blocking & dynamic rendering.
+        isSSG = false
+      }
     }
 
     // Toggle whether or not this is a Data request
@@ -2165,7 +2179,8 @@ export default abstract class Server<
     const couldSupportPPR: boolean =
       this.isAppPPREnabled &&
       typeof routeModule !== 'undefined' &&
-      isAppPageRouteModule(routeModule)
+      isAppPageRouteModule(routeModule) &&
+      !isHtmlBot
 
     // When enabled, this will allow the use of the `?__nextppronly` query to
     // enable debugging of the static shell.
@@ -2491,6 +2506,7 @@ export default abstract class Server<
         query: origQuery,
       })
 
+      const shouldWaitOnAllReady = !supportsDynamicResponse || isHtmlBot
       const renderOpts: LoadedRenderOpts = {
         ...components,
         ...opts,
@@ -2528,6 +2544,7 @@ export default abstract class Server<
           isRoutePPREnabled,
         },
         supportsDynamicResponse,
+        shouldWaitOnAllReady,
         isOnDemandRevalidate,
         isDraftMode: isPreviewMode,
         isServerAction,
@@ -3265,7 +3282,8 @@ export default abstract class Server<
 
     const didPostpone =
       cacheEntry.value?.kind === CachedRouteKind.APP_PAGE &&
-      typeof cacheEntry.value.postponed === 'string'
+      typeof cacheEntry.value.postponed === 'string' &&
+      !isHtmlBot
 
     if (
       isSSG &&

@@ -21,18 +21,13 @@ export type SupportedErrorEvent = {
 
 function getErrorSignature(ev: SupportedErrorEvent): string {
   const { event } = ev
+  // eslint-disable-next-line default-case -- TypeScript checks this
   switch (event.type) {
     case ACTION_UNHANDLED_ERROR:
     case ACTION_UNHANDLED_REJECTION: {
       return `${event.reason.name}::${event.reason.message}::${event.reason.stack}`
     }
-    default: {
-    }
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _: never = event as never
-  return ''
 }
 
 export function useErrorHook({
@@ -81,21 +76,17 @@ export function useErrorHook({
     if (nextError == null) {
       return
     }
+
     let mounted = true
 
-    getErrorByType(nextError, isAppDir).then(
-      (resolved) => {
+    getErrorByType(nextError, isAppDir).then((resolved) => {
+      if (mounted) {
         // We don't care if the desired error changed while we were resolving,
         // thus we're not tracking it using a ref. Once the work has been done,
         // we'll store it.
-        if (mounted) {
-          setLookups((m) => ({ ...m, [resolved.id]: resolved }))
-        }
-      },
-      () => {
-        // TODO: handle this, though an edge case
+        setLookups((m) => ({ ...m, [resolved.id]: resolved }))
       }
-    )
+    })
 
     return () => {
       mounted = false
@@ -109,7 +100,7 @@ export function useErrorHook({
     // missing tags won't be dismissed until resolved, the
     // total number of errors may be fixed to their length.
     totalErrorCount: rootLayoutMissingTags?.length
-      ? rootLayoutMissingTags.length
+      ? 1
       : !!buildError
         ? 1
         : readyErrors.length,

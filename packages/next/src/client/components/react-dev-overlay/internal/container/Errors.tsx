@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react'
 import {
   ACTION_UNHANDLED_ERROR,
   ACTION_UNHANDLED_REJECTION,
@@ -162,21 +162,16 @@ export function Errors({
     if (nextError == null) {
       return
     }
-    let mounted = true
 
-    getErrorByType(nextError, isAppDir).then(
-      (resolved) => {
+    let mounted = true
+    getErrorByType(nextError, isAppDir).then((resolved) => {
+      if (mounted) {
         // We don't care if the desired error changed while we were resolving,
         // thus we're not tracking it using a ref. Once the work has been done,
         // we'll store it.
-        if (mounted) {
-          setLookups((m) => ({ ...m, [resolved.id]: resolved }))
-        }
-      },
-      () => {
-        // TODO: handle this, though an edge case
+        setLookups((m) => ({ ...m, [resolved.id]: resolved }))
       }
-    )
+    })
 
     return () => {
       mounted = false
@@ -236,6 +231,7 @@ export function Errors({
     return (
       <Toast
         data-nextjs-toast
+        data-issues
         className={`nextjs-toast-errors-parent${hasStaticIndicator ? ' nextjs-error-with-static' : ''}`}
         onClick={fullscreen}
       >
@@ -256,7 +252,8 @@ export function Errors({
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
           <span>
-            {readyErrors.length} issue{readyErrors.length > 1 ? 's' : ''}
+            <span data-issues-count>{readyErrors.length}</span> issue
+            {readyErrors.length > 1 ? 's' : ''}
           </span>
           <button
             data-nextjs-toast-errors-hide-button
@@ -399,9 +396,14 @@ export function Errors({
               </div>
             ) : undefined}
           </DialogHeader>
-          <DialogBody className="nextjs-container-errors-body">
-            <RuntimeError key={activeError.id.toString()} error={activeError} />
-          </DialogBody>
+          <Suspense fallback={<div data-nextjs-error-suspended />}>
+            <DialogBody className="nextjs-container-errors-body">
+              <RuntimeError
+                key={activeError.id.toString()}
+                error={activeError}
+              />
+            </DialogBody>
+          </Suspense>
         </DialogContent>
       </Dialog>
     </Overlay>

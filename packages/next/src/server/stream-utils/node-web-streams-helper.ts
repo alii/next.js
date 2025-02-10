@@ -589,6 +589,7 @@ export type ContinueStreamOptions = {
   inlinedDataStream: ReadableStream<Uint8Array> | undefined
   isStaticGeneration: boolean
   getServerInsertedHTML: () => Promise<string>
+  getServerInsertedMetadata: () => Promise<string>
   validateRootLayout?: boolean
   /**
    * Suffix to inject after the buffered data, but before the close tags.
@@ -603,6 +604,7 @@ export async function continueFizzStream(
     inlinedDataStream,
     isStaticGeneration,
     getServerInsertedHTML,
+    getServerInsertedMetadata,
     validateRootLayout,
   }: ContinueStreamOptions
 ): Promise<ReadableStream<Uint8Array>> {
@@ -618,6 +620,9 @@ export async function continueFizzStream(
   return chainTransformers(renderStream, [
     // Buffer everything to avoid flushing too frequently
     createBufferedTransformStream(),
+
+    // Insert generated metadata
+    createHeadInsertionTransformStream(getServerInsertedMetadata),
 
     // Insert suffix content
     suffixUnclosed != null && suffixUnclosed.length > 0
@@ -642,11 +647,15 @@ export async function continueFizzStream(
 
 type ContinueDynamicPrerenderOptions = {
   getServerInsertedHTML: () => Promise<string>
+  getServerInsertedMetadata: () => Promise<string>
 }
 
 export async function continueDynamicPrerender(
   prerenderStream: ReadableStream<Uint8Array>,
-  { getServerInsertedHTML }: ContinueDynamicPrerenderOptions
+  {
+    getServerInsertedHTML,
+    getServerInsertedMetadata,
+  }: ContinueDynamicPrerenderOptions
 ) {
   return (
     prerenderStream
@@ -655,17 +664,26 @@ export async function continueDynamicPrerender(
       .pipeThrough(createStripDocumentClosingTagsTransform())
       // Insert generated tags to head
       .pipeThrough(createHeadInsertionTransformStream(getServerInsertedHTML))
+      // Insert generated metadata
+      .pipeThrough(
+        createHeadInsertionTransformStream(getServerInsertedMetadata)
+      )
   )
 }
 
 type ContinueStaticPrerenderOptions = {
   inlinedDataStream: ReadableStream<Uint8Array>
   getServerInsertedHTML: () => Promise<string>
+  getServerInsertedMetadata: () => Promise<string>
 }
 
 export async function continueStaticPrerender(
   prerenderStream: ReadableStream<Uint8Array>,
-  { inlinedDataStream, getServerInsertedHTML }: ContinueStaticPrerenderOptions
+  {
+    inlinedDataStream,
+    getServerInsertedHTML,
+    getServerInsertedMetadata,
+  }: ContinueStaticPrerenderOptions
 ) {
   return (
     prerenderStream
@@ -673,6 +691,10 @@ export async function continueStaticPrerender(
       .pipeThrough(createBufferedTransformStream())
       // Insert generated tags to head
       .pipeThrough(createHeadInsertionTransformStream(getServerInsertedHTML))
+      // Insert generated metadata to head
+      .pipeThrough(
+        createHeadInsertionTransformStream(getServerInsertedMetadata)
+      )
       // Insert the inlined data (Flight data, form state, etc.) stream into the HTML
       .pipeThrough(createMergedTransformStream(inlinedDataStream))
       // Close tags should always be deferred to the end
@@ -683,11 +705,16 @@ export async function continueStaticPrerender(
 type ContinueResumeOptions = {
   inlinedDataStream: ReadableStream<Uint8Array>
   getServerInsertedHTML: () => Promise<string>
+  getServerInsertedMetadata: () => Promise<string>
 }
 
 export async function continueDynamicHTMLResume(
   renderStream: ReadableStream<Uint8Array>,
-  { inlinedDataStream, getServerInsertedHTML }: ContinueResumeOptions
+  {
+    inlinedDataStream,
+    getServerInsertedHTML,
+    getServerInsertedMetadata,
+  }: ContinueResumeOptions
 ) {
   return (
     renderStream
@@ -695,6 +722,10 @@ export async function continueDynamicHTMLResume(
       .pipeThrough(createBufferedTransformStream())
       // Insert generated tags to head
       .pipeThrough(createHeadInsertionTransformStream(getServerInsertedHTML))
+      // Insert generated metadata to body
+      .pipeThrough(
+        createHeadInsertionTransformStream(getServerInsertedMetadata)
+      )
       // Insert the inlined data (Flight data, form state, etc.) stream into the HTML
       .pipeThrough(createMergedTransformStream(inlinedDataStream))
       // Close tags should always be deferred to the end
