@@ -1338,7 +1338,7 @@ async fn compile_time_info_for_module_type(
     let compile_time_info = compile_time_info.await?;
     let free_var_references = compile_time_info.free_var_references;
 
-    let mut free_var_references = free_var_references.await?.clone_value();
+    let mut free_var_references = free_var_references.owned().await?;
     let (typeof_exports, typeof_module, require) = if is_esm {
         ("undefined", "undefined", TURBOPACK_REQUIRE_STUB)
     } else {
@@ -2447,7 +2447,7 @@ async fn handle_free_var_reference(
                 Request::parse(Value::new(request.clone().into()))
                     .to_resolved()
                     .await?,
-                IssueSource::from_swc_offsets(state.source, span.lo.to_usize(), span.hi.to_usize()),
+                IssueSource::from_swc_offsets(state.source, span.lo.to_u32(), span.hi.to_u32()),
                 Default::default(),
                 match state.tree_shaking_mode {
                     Some(TreeShakingMode::ModuleFragments)
@@ -2472,7 +2472,7 @@ async fn handle_free_var_reference(
 }
 
 fn issue_source(source: ResolvedVc<Box<dyn Source>>, span: Span) -> IssueSource {
-    IssueSource::from_swc_offsets(source, span.lo.to_usize(), span.hi.to_usize())
+    IssueSource::from_swc_offsets(source, span.lo.to_u32(), span.hi.to_u32())
 }
 
 async fn analyze_amd_define(
