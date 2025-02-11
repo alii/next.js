@@ -236,6 +236,7 @@ export class BunNextServer extends BaseServer<
         const request = new BunNextRequest(new URL(rawRequest.url), rawRequest)
         const response = new BunNextResponse()
 
+        debugger
         await handler(request, response)
 
         const res = await response.toResponse()

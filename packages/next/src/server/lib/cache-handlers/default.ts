@@ -2,12 +2,12 @@
   This is the default "use cache" handler it defaults
   to an in memory store
 */
-import { LRUCache } from '../lru-cache'
-import type { CacheEntry, CacheHandler } from './types'
 import {
   isTagStale,
   tagsManifest,
 } from '../incremental-cache/tags-manifest.external'
+import { LRUCache } from '../lru-cache'
+import type { CacheEntry, CacheHandler } from './types'
 
 type PrivateCacheEntry = {
   entry: CacheEntry

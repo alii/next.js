@@ -1,17 +1,17 @@
-import type { CacheFs } from '../../../shared/lib/utils'
 import type { PrerenderManifest } from '../../../build'
+import type { DeepReadonly } from '../../../shared/lib/deep-readonly'
+import type { CacheFs } from '../../../shared/lib/utils'
 import {
-  type IncrementalCacheValue,
   type IncrementalCacheEntry,
   type IncrementalCache as IncrementalCacheType,
-  IncrementalCacheKind,
+  type IncrementalCacheValue,
   CachedRouteKind,
+  IncrementalCacheKind,
 } from '../../response-cache'
 import type { Revalidate } from '../revalidate'
-import type { DeepReadonly } from '../../../shared/lib/deep-readonly'
 
-import FileSystemCache from './file-system-cache'
 import { normalizePagePath } from '../../../shared/lib/page-path/normalize-page-path'
+import FileSystemCache from './file-system-cache'
 
 import {
   CACHE_ONE_YEAR,
@@ -19,13 +19,13 @@ import {
   NEXT_CACHE_REVALIDATE_TAG_TOKEN_HEADER,
   PRERENDER_REVALIDATE_HEADER,
 } from '../../../lib/constants'
-import { toRoute } from '../to-route'
-import { SharedRevalidateTimings } from './shared-revalidate-timings'
 import { workUnitAsyncStorageInstance } from '../../app-render/work-unit-async-storage-instance'
 import {
   getPrerenderResumeDataCache,
   getRenderResumeDataCache,
 } from '../../app-render/work-unit-async-storage.external'
+import { toRoute } from '../to-route'
+import { SharedRevalidateTimings } from './shared-revalidate-timings'
 
 export interface CacheHandlerContext {
   fs?: CacheFs
@@ -285,19 +285,29 @@ export class IncrementalCache implements IncrementalCacheType {
         const chunks: Uint8Array[] = []
 
         try {
-          await readableBody.pipeTo(
-            new WritableStream({
-              write(chunk) {
-                if (typeof chunk === 'string') {
-                  chunks.push(encoder.encode(chunk))
-                  bodyChunks.push(chunk)
-                } else {
-                  chunks.push(chunk)
-                  bodyChunks.push(decoder.decode(chunk, { stream: true }))
-                }
-              },
-            })
-          )
+          for await (const chunk of readableBody) {
+            if (typeof chunk === 'string') {
+              chunks.push(encoder.encode(chunk))
+              bodyChunks.push(chunk)
+            } else {
+              chunks.push(chunk)
+              bodyChunks.push(decoder.decode(chunk, { stream: true }))
+            }
+          }
+
+          // await readableBody.pipeTo(
+          //   new WritableStream({
+          //     write(chunk) {
+          //       if (typeof chunk === 'string') {
+          //         chunks.push(encoder.encode(chunk))
+          //         bodyChunks.push(chunk)
+          //       } else {
+          //         chunks.push(chunk)
+          //         bodyChunks.push(decoder.decode(chunk, { stream: true }))
+          //       }
+          //     },
+          //   })
+          // )
 
           // Flush the decoder.
           bodyChunks.push(decoder.decode())
