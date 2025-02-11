@@ -649,7 +649,7 @@ async function writeStandaloneDirectory(
       if (hasNodeMiddleware) {
         const middlewareOutput = path.join(
           distDir,
-          STANDALONE_DIRECTORY,
+          standaloneDirectoryName,
           requiredServerFiles.config.distDir,
           SERVER_DIRECTORY,
           'middleware.js'
