@@ -619,7 +619,7 @@ export async function continueFizzStream(
 
   return chainTransformers(renderStream, [
     // Buffer everything to avoid flushing too frequently
-    createBufferedTransformStream(),
+    isBun ? null : createBufferedTransformStream(),
 
     // Insert generated metadata
     createHeadInsertionTransformStream(getServerInsertedMetadata),

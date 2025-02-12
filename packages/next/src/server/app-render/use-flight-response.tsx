@@ -2,6 +2,7 @@ import type { ClientReferenceManifest } from '../../build/webpack/plugins/flight
 import type { BinaryStreamOf } from './app-render'
 
 import type { DeepReadonly } from '../../shared/lib/deep-readonly'
+import { isBun } from '../base-http/helpers'
 import { htmlEscapeJsonString } from '../htmlescape'
 
 const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge'
@@ -104,13 +105,17 @@ export function createInlinedDataReadableStream(
             // The chunk cannot be decoded as valid UTF-8 string as it might
             // have arbitrary binary data.
             writeFlightDataInstruction(
-              controller,
+              (text) => controller.enqueue(text),
               startScriptTag,
               decodedString
             )
           } catch {
             // The chunk cannot be decoded as valid UTF-8 string.
-            writeFlightDataInstruction(controller, startScriptTag, value)
+            writeFlightDataInstruction(
+              (text) => controller.enqueue(text),
+              startScriptTag,
+              value
+            )
           }
         }
 
@@ -155,7 +160,7 @@ function writeInitialInstructions(
 }
 
 function writeFlightDataInstruction(
-  controller: ReadableStreamDefaultController,
+  write: (chunk: string | Uint8Array) => void,
   scriptStart: string,
   chunk: string | Uint8Array
 ) {
@@ -176,9 +181,7 @@ function writeFlightDataInstruction(
     )
   }
 
-  controller.enqueue(
-    encoder.encode(
-      `${scriptStart}self.__next_f.push(${htmlInlinedData})</script>`
-    )
-  )
+  const text = `${scriptStart}self.__next_f.push(${htmlInlinedData})</script>`
+
+  write(isBun ? text : encoder.encode(text))
 }
