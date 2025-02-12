@@ -636,15 +636,5 @@
   "635": "%s: Invalid source map. Only conformant source maps can be used to find the original code.",
   "636": "Invariant: frames must be a function when the React version has React.use. This is a bug in Next.js.",
   "637": "Invariant: frames must be an array when the React version does not have React.use. This is a bug in Next.js.",
-  "638": "Invariant: App Route Route Modules cannot be used with the edge runtime",
-  "639": "\"next start\" does not work with \"output: bun\" configuration. Use \"bun .next/bun/server.js\" instead.",
-  "640": "Readable controller not initialized (writable.close() callback)",
-  "641": "Invariant: unknown response type for RenderResult.toBodyInit(). This is a bug in Next.js",
-  "642": "Readable controller not initialized (writable.write() callback)",
-  "643": "Readable controller not initialized (transform.enqueue() callback)",
-  "644": "Readable controller not initialized (writable.abort() callback)",
-  "645": "onClose() is not implemented in BunNextResponse",
-  "646": "Invalid request or response",
-  "647": "WebNextResponse may not be used inside renderToResponseWithComponents",
-  "648": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime"
+  "638": "The following tags are missing in the Root Layout: %s.\\nRead more at https://nextjs.org/docs/messages/missing-root-layout-tags"
 }
