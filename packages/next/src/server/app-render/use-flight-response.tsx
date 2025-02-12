@@ -4,6 +4,7 @@ import type { BinaryStreamOf } from './app-render'
 import type { DeepReadonly } from '../../shared/lib/deep-readonly'
 import { isBun } from '../base-http/helpers'
 import { htmlEscapeJsonString } from '../htmlescape'
+import { BunDirectReadableStream } from '../stream-utils/bun'
 
 const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge'
 
@@ -80,21 +81,37 @@ export function createInlinedDataReadableStream(
   const flightReader = flightStream.getReader()
   const decoder = new TextDecoder('utf-8', { fatal: true })
 
-  const readable = new ReadableStream({
-    type: 'bytes',
-    start(controller) {
-      try {
-        writeInitialInstructions(
-          (text) => controller.enqueue(text),
-          startScriptTag,
-          formState
-        )
-      } catch (error) {
-        // during encoding or enqueueing forward the error downstream
-        controller.error(error)
-      }
-    },
+  const readable = new (isBun ? BunDirectReadableStream : ReadableStream)({
+    type: isBun ? undefined : 'bytes', // Overwritten in Bun by BunDirectReadableStream
+    start: isBun
+      ? undefined
+      : (controller) => {
+          try {
+            writeInitialInstructions(
+              (text) => controller.enqueue(text),
+              startScriptTag,
+              formState
+            )
+          } catch (error) {
+            // during encoding or enqueueing forward the error downstream
+            controller.error(error)
+          }
+        },
     async pull(controller) {
+      if (isBun) {
+        try {
+          writeInitialInstructions(
+            (text) => controller.enqueue(text),
+            startScriptTag,
+            formState
+          )
+        } catch (error) {
+          // during encoding or enqueueing forward the error downstream
+          controller.error(error)
+          return
+        }
+      }
+
       try {
         const { done, value } = await flightReader.read()
 
@@ -105,14 +122,20 @@ export function createInlinedDataReadableStream(
             // The chunk cannot be decoded as valid UTF-8 string as it might
             // have arbitrary binary data.
             writeFlightDataInstruction(
-              (text) => controller.enqueue(text),
+              (text) =>
+                'write' in controller
+                  ? controller.write(text)
+                  : controller.enqueue(encoder.encode(text)),
               startScriptTag,
               decodedString
             )
           } catch {
             // The chunk cannot be decoded as valid UTF-8 string.
             writeFlightDataInstruction(
-              (text) => controller.enqueue(text),
+              (text) =>
+                'write' in controller
+                  ? controller.write(text)
+                  : controller.enqueue(encoder.encode(text)),
               startScriptTag,
               value
             )
@@ -160,7 +183,7 @@ function writeInitialInstructions(
 }
 
 function writeFlightDataInstruction(
-  write: (chunk: string | Uint8Array) => void,
+  write: (chunk: string) => void,
   scriptStart: string,
   chunk: string | Uint8Array
 ) {
@@ -181,7 +204,5 @@ function writeFlightDataInstruction(
     )
   }
 
-  const text = `${scriptStart}self.__next_f.push(${htmlInlinedData})</script>`
-
-  write(isBun ? text : encoder.encode(text))
+  write(`${scriptStart}self.__next_f.push(${htmlInlinedData})</script>`)
 }

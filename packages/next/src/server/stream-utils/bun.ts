@@ -52,11 +52,11 @@ declare var ReadableStream: {
   ): ReadableStream<R>
 }
 
-export class BunDirectReadableStream<T> extends ReadableStream<T> {
+export class BunDirectReadableStream<T = Uint8Array> extends ReadableStream<T> {
   public constructor(
     underlyingSource: Omit<BunUnderlyingDirectSource<T>, 'type'>
   ) {
-    super({ type: 'direct', ...underlyingSource })
+    super({ ...underlyingSource, type: 'direct' })
   }
 }
 
