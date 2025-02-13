@@ -1,10 +1,10 @@
-import type { ClientReferenceManifest } from '../../build/webpack/plugins/flight-manifest-plugin'
-import type { BinaryStreamOf } from './app-render'
+import type { ClientReferenceManifest } from '../../../build/webpack/plugins/flight-manifest-plugin'
+import type { BinaryStreamOf } from '../../utils'
 
-import type { DeepReadonly } from '../../shared/lib/deep-readonly'
-import { isBun } from '../base-http/helpers'
-import { htmlEscapeJsonString } from '../htmlescape'
-import { BunDirectReadableStream } from '../stream-utils/bun'
+import type { DeepReadonly } from '../../../shared/lib/deep-readonly'
+import { isBun } from '../../base-http/helpers'
+import { htmlEscapeJsonString } from '../../htmlescape'
+import { BunDirectReadableStream } from '../../stream-utils/bun'
 
 const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge'
 

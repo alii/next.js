@@ -81,7 +81,7 @@ export function matchOnReqRes<T>(
     case isWebNextRequest(reqRes.req) && map.web !== undefined:
       return map.web(reqRes as never)
     default:
-      throw new Error('Invalid request or response')
+      throw new Error('matchOnReqRes() received an invalid request or response')
   }
 }
 
@@ -99,7 +99,7 @@ export function matchOnReq<T>(
     case isWebNextRequest(req) && map.web !== undefined:
       return map.web(req as never)
     default:
-      throw new Error('Invalid request or response')
+      throw new Error('matchOnReq() received an invalid request')
   }
 }
 
@@ -117,6 +117,6 @@ export function matchOnRes<T>(
     case isWebNextResponse(res) && map.web !== undefined:
       return map.web(res as never)
     default:
-      throw new Error('Invalid request or response')
+      throw new Error('matchOnRes() received an invalid request or response')
   }
 }

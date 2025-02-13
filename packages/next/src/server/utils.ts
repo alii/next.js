@@ -1,5 +1,12 @@
 import { BLOCKED_PAGES } from '../shared/lib/constants'
 
+// We use a trick with TS Generics to branch streams with a type so we can
+// consume the parsed value of a Readable Stream if it was constructed with a
+// certain object shape. The generic type is not used directly in the type so it
+// requires a disabling of the eslint rule disallowing unused vars
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export type BinaryStreamOf<T> = ReadableStream<Uint8Array>
+
 export function isBlockedPage(page: string): boolean {
   return BLOCKED_PAGES.includes(page)
 }

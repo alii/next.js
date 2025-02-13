@@ -5,6 +5,7 @@ import { AppRenderSpan } from '../lib/trace/constants'
 import { getTracer } from '../lib/trace/tracer'
 import type { BunReadableWritablePair } from './bun'
 import { BunDirectReadableStream } from './bun'
+import type { AsyncStreamGenerator } from './bun-generators-helper'
 import { ENCODED_TAGS } from './encodedTags'
 import {
   indexOfUint8Array,
@@ -266,7 +267,7 @@ function createHeadInsertionTransformStream(
   // we won't want to insert any server HTML at all
   let hasBytes = false
 
-  return fastTransformStream({
+  return new TransformStream({
     async transform(chunk, controller) {
       hasBytes = true
 
@@ -451,7 +452,7 @@ const CLOSE_TAG = '</body></html>'
 function createMoveSuffixStream(): TransformStream<Uint8Array, Uint8Array> {
   let foundSuffix = false
 
-  return fastTransformStream({
+  return new TransformStream({
     transform(chunk, controller) {
       if (foundSuffix) {
         return controller.enqueue(chunk)
@@ -496,7 +497,7 @@ function createStripDocumentClosingTagsTransform(): TransformStream<
   Uint8Array,
   Uint8Array
 > {
-  return fastTransformStream({
+  return new TransformStream({
     transform(chunk, controller) {
       // We rely on the assumption that chunks will never break across a code unit.
       // This is reasonable because we currently concat all of React's output from a single
@@ -535,7 +536,7 @@ export function createRootLayoutValidatorStream(): TransformStream<
   let foundHtml = false
   let foundBody = false
 
-  return fastTransformStream({
+  return new TransformStream({
     async transform(chunk, controller) {
       // Peek into the streamed chunk to see if the tags are present.
       if (
@@ -735,4 +736,37 @@ export async function continueDynamicHTMLResume(
 
 export function createDocumentClosingStream(): ReadableStream<Uint8Array> {
   return streamFromString(CLOSE_TAG)
+}
+
+// Helper to convert generator to stream
+export function generatorToStream<T>(
+  generator: AsyncStreamGenerator<T>
+): ReadableStream<T> {
+  if (isBun) {
+    return new BunDirectReadableStream({
+      pull: async (controller) => {
+        try {
+          for await (const chunk of generator) {
+            controller.write(chunk)
+          }
+          controller.close()
+        } catch (err) {
+          controller.error(err)
+        }
+      },
+    })
+  }
+
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of generator) {
+          controller.enqueue(chunk)
+        }
+        controller.close()
+      } catch (err) {
+        controller.error(err)
+      }
+    },
+  })
 }

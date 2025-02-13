@@ -74,7 +74,11 @@ import { parseParameter } from '../../shared/lib/router/utils/route-regex'
 import { PAGE_SEGMENT_KEY } from '../../shared/lib/segment'
 import { createRequestStoreForRender } from '../async-storage/request-store'
 import { createWorkStore } from '../async-storage/work-store'
-import { isBunNextRequest, isNodeNextRequest } from '../base-http/helpers'
+import {
+  isBun,
+  isBunNextRequest,
+  isNodeNextRequest,
+} from '../base-http/helpers'
 import {
   getClientComponentLoaderMetrics,
   wrapClientComponentLoader,
@@ -97,7 +101,6 @@ import {
   chainStreams,
   continueDynamicHTMLResume,
   continueDynamicPrerender,
-  continueFizzStream,
   continueStaticPrerender,
   createDocumentClosingStream,
   renderToInitialFizzStream,
@@ -164,10 +167,8 @@ import {
 import { printDebugThrownValueForProspectiveRender } from './prospective-render-utils'
 import { getRequiredScripts } from './required-scripts'
 import { createServerInsertedHTML } from './server-inserted-html'
-import {
-  createInlinedDataReadableStream,
-  useFlightStream,
-} from './use-flight-response'
+import { useFlightStream as useBunFlightStream } from './use-flight-response/bun-use-flight-responses'
+import { useFlightStream as useNodeFlightStream } from './use-flight-response/node-use-flight-response'
 import { walkTreeWithFlightRouterState } from './walk-tree-with-flight-router-state'
 import {
   workUnitAsyncStorage,
@@ -181,10 +182,16 @@ import {
   createPrerenderResumeDataCache,
   createRenderResumeDataCache,
 } from '../resume-data-cache/resume-data-cache'
+import { BunDirectReadableStream } from '../stream-utils/bun'
+import { continueFizzStream as bunContFizzStream } from '../stream-utils/bun-generators-helper'
+import { continueFizzStream as nodeContFizzStream } from '../stream-utils/node-web-streams-helper'
 import { isUseCacheTimeoutError } from '../use-cache/use-cache-errors'
+import type { BinaryStreamOf } from '../utils'
 import { createComponentStylesAndScripts } from './create-component-styles-and-scripts'
 import { createServerInsertedMetadata } from './metadata-insertion/create-server-inserted-metadata'
 import { parseLoaderTree } from './parse-loader-tree'
+import { createInlinedDataGenerator as createBunInlinedDataGenerator } from './use-flight-response/bun-use-flight-responses'
+import { createInlinedDataReadableStream as createNodeInlinedDataReadableStream } from './use-flight-response/node-use-flight-response'
 
 export type GetDynamicParamFromSegment = (
   // [slug] / [[slug]] / [...slug]
@@ -1116,13 +1123,6 @@ function AppWithoutContext<T>({
   )
 }
 
-// We use a trick with TS Generics to branch streams with a type so we can
-// consume the parsed value of a Readable Stream if it was constructed with a
-// certain object shape. The generic type is not used directly in the type so it
-// requires a disabling of the eslint rule disallowing unused vars
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export type BinaryStreamOf<T> = ReadableStream<Uint8Array>
-
 async function renderToHTMLOrFlightImpl(
   req: BaseNextRequest,
   res: BaseNextResponse,
@@ -1976,7 +1976,8 @@ async function renderToStream(
       !!renderOpts.shouldWaitOnAllReady
 
     const validateRootLayout = renderOpts.dev
-    return await continueFizzStream(htmlStream, {
+
+    const options = {
       inlinedDataStream: createInlinedDataReadableStream(
         reactServerResult.consume(),
         ctx.nonce,
@@ -1986,7 +1987,21 @@ async function renderToStream(
       getServerInsertedHTML,
       getServerInsertedMetadata,
       validateRootLayout,
-    })
+    }
+
+    if (isBun) {
+      return new BunDirectReadableStream({
+        async pull(controller) {
+          const generator = bunContFizzStream(htmlStream, options)
+          for await (const chunk of generator) {
+            controller.write(chunk)
+          }
+          controller.close()
+        },
+      })
+    } else {
+      return await nodeContFizzStream(htmlStream, options)
+    }
   } catch (err) {
     if (
       isStaticGenBailoutError(err) ||
@@ -2118,26 +2133,29 @@ async function renderToStream(
         renderOpts.supportsDynamicResponse !== true ||
         !!renderOpts.shouldWaitOnAllReady
       const validateRootLayout = renderOpts.dev
-      return await continueFizzStream(fizzStream, {
-        inlinedDataStream: createInlinedDataReadableStream(
-          // This is intentionally using the readable datastream from the
-          // main render rather than the flight data from the error page
-          // render
-          reactServerResult.consume(),
-          ctx.nonce,
-          formState
-        ),
-        isStaticGeneration: generateStaticHTML,
-        getServerInsertedHTML: makeGetServerInsertedHTML({
-          polyfills,
-          renderServerInsertedHTML,
-          serverCapturedErrors: [],
-          basePath: renderOpts.basePath,
-          tracingMetadata: tracingMetadata,
-        }),
-        getServerInsertedMetadata,
-        validateRootLayout,
-      })
+      return await (isBun ? bunContFizzStream : nodeContFizzStream)(
+        fizzStream,
+        {
+          inlinedDataStream: createInlinedDataReadableStream(
+            // This is intentionally using the readable datastream from the
+            // main render rather than the flight data from the error page
+            // render
+            reactServerResult.consume(),
+            ctx.nonce,
+            formState
+          ),
+          isStaticGeneration: generateStaticHTML,
+          getServerInsertedHTML: makeGetServerInsertedHTML({
+            polyfills,
+            renderServerInsertedHTML,
+            serverCapturedErrors: [],
+            basePath: renderOpts.basePath,
+            tracingMetadata: tracingMetadata,
+          }),
+          getServerInsertedMetadata,
+          validateRootLayout,
+        }
+      )
     } catch (finalErr: any) {
       if (
         process.env.NODE_ENV === 'development' &&
@@ -2188,7 +2206,7 @@ async function spawnDynamicValidationInDev(
     type: 'prerender',
     phase: 'render',
     implicitTags: [],
-    renderSignal: initialServerRenderController.signal,
+    renderSignal: renderController.signal,
     controller: initialServerPrerenderController,
     cacheSignal,
     dynamicTracking: null,
@@ -3533,17 +3551,20 @@ async function prerenderToStream(
         return {
           digestErrorsMap: reactServerErrorsByDigest,
           ssrErrors: allCapturedErrors,
-          stream: await continueFizzStream(htmlStream!, {
-            inlinedDataStream: createInlinedDataReadableStream(
-              serverPrerenderStreamResult.asStream(),
-              ctx.nonce,
-              formState
-            ),
-            isStaticGeneration: true,
-            getServerInsertedHTML,
-            getServerInsertedMetadata,
-            validateRootLayout,
-          }),
+          stream: await (isBun ? bunContFizzStream : nodeContFizzStream)(
+            htmlStream!,
+            {
+              inlinedDataStream: createInlinedDataReadableStream(
+                serverPrerenderStreamResult.asStream(),
+                ctx.nonce,
+                formState
+              ),
+              isStaticGeneration: true,
+              getServerInsertedHTML,
+              getServerInsertedMetadata,
+              validateRootLayout,
+            }
+          ),
           dynamicAccess: consumeDynamicAccess(
             serverDynamicTracking,
             clientDynamicTracking
@@ -3865,16 +3886,19 @@ async function prerenderToStream(
       return {
         digestErrorsMap: reactServerErrorsByDigest,
         ssrErrors: allCapturedErrors,
-        stream: await continueFizzStream(htmlStream, {
-          inlinedDataStream: createInlinedDataReadableStream(
-            reactServerResult.consumeAsStream(),
-            ctx.nonce,
-            formState
-          ),
-          isStaticGeneration: true,
-          getServerInsertedHTML,
-          getServerInsertedMetadata,
-        }),
+        stream: await (isBun ? bunContFizzStream : nodeContFizzStream)(
+          htmlStream,
+          {
+            inlinedDataStream: createInlinedDataReadableStream(
+              reactServerResult.consumeAsStream(),
+              ctx.nonce,
+              formState
+            ),
+            isStaticGeneration: true,
+            getServerInsertedHTML,
+            getServerInsertedMetadata,
+          }
+        ),
         // TODO: Should this include the SSR pass?
         collectedRevalidate: prerenderLegacyStore.revalidate,
         collectedExpire: prerenderLegacyStore.expire,
@@ -4034,23 +4058,26 @@ async function prerenderToStream(
         // the response in the caller.
         digestErrorsMap: reactServerErrorsByDigest,
         ssrErrors: allCapturedErrors,
-        stream: await continueFizzStream(fizzStream, {
-          inlinedDataStream: createInlinedDataReadableStream(
-            flightStream,
-            ctx.nonce,
-            formState
-          ),
-          isStaticGeneration: true,
-          getServerInsertedHTML: makeGetServerInsertedHTML({
-            polyfills,
-            renderServerInsertedHTML,
-            serverCapturedErrors: [],
-            basePath: renderOpts.basePath,
-            tracingMetadata: tracingMetadata,
-          }),
-          getServerInsertedMetadata,
-          validateRootLayout,
-        }),
+        stream: await (isBun ? bunContFizzStream : nodeContFizzStream)(
+          fizzStream,
+          {
+            inlinedDataStream: createInlinedDataReadableStream(
+              flightStream,
+              ctx.nonce,
+              formState
+            ),
+            isStaticGeneration: true,
+            getServerInsertedHTML: makeGetServerInsertedHTML({
+              polyfills,
+              renderServerInsertedHTML,
+              serverCapturedErrors: [],
+              basePath: renderOpts.basePath,
+              tracingMetadata: tracingMetadata,
+            }),
+            getServerInsertedMetadata,
+            validateRootLayout,
+          }
+        ),
         dynamicAccess: null,
         collectedRevalidate:
           prerenderStore !== null ? prerenderStore.revalidate : INFINITE_CACHE,
@@ -4219,4 +4246,39 @@ async function collectSegmentData(
     serverConsumerManifest,
     fallbackRouteParams
   )
+}
+
+// Update the useFlightStream function to use Bun-specific version when appropriate
+const flightStreamHook = isBun ? useBunFlightStream : useNodeFlightStream
+
+function useFlightStream<T>(
+  flightStream: BinaryStreamOf<T>,
+  clientReferenceManifest: DeepReadonly<ClientReferenceManifest>,
+  nonce?: string
+): Promise<T> {
+  return flightStreamHook(flightStream, clientReferenceManifest, nonce)
+}
+
+// Update the createInlinedDataReadableStream function to use Bun-specific version when appropriate
+function createInlinedDataReadableStream(
+  flightStream: ReadableStream<Uint8Array>,
+  nonce: string | undefined,
+  formState: unknown | null
+): ReadableStream<Uint8Array> {
+  if (isBun) {
+    return new BunDirectReadableStream({
+      async pull(controller) {
+        const generator = createBunInlinedDataGenerator(
+          flightStream,
+          nonce,
+          formState
+        )
+        for await (const chunk of generator) {
+          controller.write(chunk)
+        }
+        controller.close()
+      },
+    })
+  }
+  return createNodeInlinedDataReadableStream(flightStream, nonce, formState)
 }

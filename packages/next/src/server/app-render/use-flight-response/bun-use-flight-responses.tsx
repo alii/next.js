@@ -1,8 +1,9 @@
 import type { ServerConsumerManifest } from 'react-server-dom-webpack/client.edge'
-import type { ClientReferenceManifest } from '../../build/webpack/plugins/flight-manifest-plugin'
-import type { DeepReadonly } from '../../shared/lib/deep-readonly'
-import { htmlEscapeJsonString } from '../htmlescape'
-import type { BinaryStreamOf } from './app-render'
+import type { ClientReferenceManifest } from '../../../build/webpack/plugins/flight-manifest-plugin'
+import type { DeepReadonly } from '../../../shared/lib/deep-readonly'
+import { htmlEscapeJsonString } from '../../htmlescape'
+import type { AsyncStreamGenerator } from '../../stream-utils/bun-generators-helper'
+import type { BinaryStreamOf } from '../../utils'
 
 const isEdgeRuntime = process.env.NEXT_RUNTIME === 'edge'
 
@@ -63,8 +64,6 @@ export function useFlightStream<T>(
 
   return newResponse
 }
-
-type AsyncStreamGenerator<T> = AsyncGenerator<T, void, unknown>
 
 /**
  * Creates an async generator that yields inline script tag chunks for writing hydration
