@@ -647,5 +647,9 @@
   "646": "onClose() is not implemented in BunNextResponse",
   "647": "Invalid request or response",
   "648": "WebNextResponse may not be used inside renderToResponseWithComponents",
-  "649": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime"
+  "649": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime",
+  "650": "matchOnRes() received an invalid request or response",
+  "651": "matchOnReqRes() received an invalid request or response",
+  "652": "matchOnReq() received an invalid request",
+  "653": "Missing required elements: %s%s"
 }

@@ -1,4 +1,3 @@
-import type { ReactReadableStream } from './node-web-streams-helper'
 import { indexOfUint8Array } from './uint8array-helpers'
 
 const encoder = new TextEncoder()
@@ -38,29 +37,39 @@ async function* createBufferedGenerator(
   }
 }
 
-// Helper to convert stream to generator
-async function* streamToGenerator<T>(
-  stream: AsyncStreamGenerator<T> | ReactReadableStream
-): AsyncStreamGenerator<T> {
-  if (Symbol.asyncIterator in stream) {
-    yield* stream as AsyncStreamGenerator<T>
-    return
-  }
+export function generatorToStream<T>(
+  generator: AsyncStreamGenerator<T>
+): ReadableStream<T> {
+  return new ReadableStream({
+    async start(controller) {
+      for await (const chunk of generator) {
+        controller.enqueue(chunk)
+      }
+      controller.close()
+    },
+  })
+}
 
-  const reader = (stream as ReactReadableStream).getReader()
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      yield value
+async function* streamToGenerator<T>(
+  stream: ReadableStream<T> | AsyncStreamGenerator<T>
+): AsyncStreamGenerator<T> {
+  if (stream instanceof ReadableStream) {
+    const reader = stream.getReader()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        yield value
+      }
+    } finally {
+      reader.releaseLock()
     }
-  } finally {
-    reader.releaseLock()
+  } else {
+    yield* stream
   }
 }
 
-// Chain multiple generators together
-async function* chainGenerators<T>(
+export async function* chainGenerators<T>(
   ...generators: AsyncStreamGenerator<T>[]
 ): AsyncStreamGenerator<T> {
   for (const generator of generators) {
@@ -68,16 +77,84 @@ async function* chainGenerators<T>(
   }
 }
 
-// Create a generator that inserts head content
+export async function* flattenGenerators<T>(
+  source: AsyncStreamGenerator<T>,
+  generators: (
+    | ((source: AsyncStreamGenerator<T>) => AsyncStreamGenerator<T>)
+    | null
+    | false
+    | undefined
+  )[]
+): AsyncStreamGenerator<T> {
+  let current = source
+  for (const generator of generators) {
+    if (generator) current = generator(current)
+  }
+  yield* current
+}
+
+/**
+ * Creates a generator that inserts content into the HTML stream at the </head> tag.
+ * This implementation exactly matches the behavior of the original transform stream:
+ * - If already inserted, prepends any new insertion content before each chunk
+ * - If not inserted, searches for </head> tag and inserts content there
+ * - For PPR/partial renders, prepends content when tag isn't found
+ * - Implements flush phase to ensure insertion happens if any bytes were processed
+ */
 async function* createHeadInsertion(
   getContent: () => Promise<string>,
   generator: AsyncStreamGenerator<Uint8Array>
 ): AsyncStreamGenerator<Uint8Array> {
-  const content = await getContent()
-  if (content) {
-    yield encoder.encode(content)
+  let inserted = false
+  let hasBytes = false
+  const closingHeadTag = encoder.encode('</head>')
+
+  for await (const chunk of generator) {
+    hasBytes = true
+    const insertion = await getContent()
+
+    if (inserted) {
+      // If we've already inserted and have more content, prepend it
+      if (insertion) {
+        yield encoder.encode(insertion)
+      }
+      yield chunk
+    } else {
+      // Search for </head> in the chunk
+      const index = indexOfUint8Array(chunk, closingHeadTag)
+      if (index !== -1) {
+        // Found the </head> tag - insert content exactly at this point
+        if (insertion) {
+          const encodedInsertion = encoder.encode(insertion)
+          const newChunk = new Uint8Array(
+            chunk.length + encodedInsertion.length
+          )
+          newChunk.set(chunk.subarray(0, index))
+          newChunk.set(encodedInsertion, index)
+          newChunk.set(chunk.subarray(index), index + encodedInsertion.length)
+          yield newChunk
+        } else {
+          yield chunk
+        }
+        inserted = true
+      } else {
+        // No </head> tag found - this happens in PPR/partial renders
+        if (insertion) {
+          yield encoder.encode(insertion)
+        }
+        yield chunk
+        inserted = true
+      }
+    }
   }
-  yield* generator
+
+  // Flush phase: if any bytes were processed, get and yield any final insertion
+  if (hasBytes) {
+    const insertion = await getContent()
+    if (insertion) {
+      yield encoder.encode(insertion)
+    }
+  }
 }
 
 // Create a generator that validates root layout
@@ -163,9 +240,22 @@ async function* createDeferredSuffix(
   }
 }
 
+// Update the type to accept either a ReadableStream or AsyncStreamGenerator
+export type BunFizzStreamOptions = {
+  inlinedDataStream:
+    | AsyncStreamGenerator<Uint8Array>
+    | ReadableStream<Uint8Array>
+    | undefined
+  isStaticGeneration: boolean
+  getServerInsertedHTML: () => Promise<string>
+  getServerInsertedMetadata: () => Promise<string>
+  validateRootLayout?: boolean
+  suffix?: string | undefined
+}
+
 // Main stream processing function for Bun
 export async function* continueFizzStream(
-  renderStream: ReactReadableStream,
+  renderStream: ReadableStream<Uint8Array>,
   {
     suffix,
     inlinedDataStream,
@@ -175,7 +265,9 @@ export async function* continueFizzStream(
     validateRootLayout,
   }: {
     suffix?: string
-    inlinedDataStream?: AsyncStreamGenerator<Uint8Array> | ReactReadableStream
+    inlinedDataStream?:
+      | AsyncStreamGenerator<Uint8Array>
+      | ReadableStream<Uint8Array>
     isStaticGeneration: boolean
     getServerInsertedHTML: () => Promise<string>
     getServerInsertedMetadata: () => Promise<string>
@@ -188,31 +280,27 @@ export async function* continueFizzStream(
     await renderStream.allReady
   }
 
-  let generator = streamToGenerator(renderStream)
+  yield* flattenGenerators(streamToGenerator(renderStream), [
+    (g) => createHeadInsertion(getServerInsertedMetadata, g),
 
-  // Apply transformations in sequence
-  generator = await createHeadInsertion(getServerInsertedMetadata, generator)
+    suffixUnclosed != null &&
+      suffixUnclosed.length > 0 &&
+      ((g) => createDeferredSuffix(suffixUnclosed, g)),
 
-  if (suffixUnclosed != null && suffixUnclosed.length > 0) {
-    generator = createDeferredSuffix(suffixUnclosed, generator)
-  }
+    inlinedDataStream &&
+      ((g) => chainGenerators(g, streamToGenerator(inlinedDataStream))),
 
-  if (inlinedDataStream) {
-    generator = chainGenerators(generator, streamToGenerator(inlinedDataStream))
-  }
+    validateRootLayout && ((g) => createRootLayoutValidator(g)),
 
-  if (validateRootLayout) {
-    generator = createRootLayoutValidator(generator)
-  }
+    (g) => createMoveSuffix(g),
 
-  generator = createMoveSuffix(generator)
-  generator = await createHeadInsertion(getServerInsertedHTML, generator)
-
-  yield* generator
+    (g) => createHeadInsertion(getServerInsertedHTML, g),
+  ])
 }
 
+// Update continueDynamicPrerender to handle streams directly
 export async function* continueDynamicPrerender(
-  prerenderStream: AsyncStreamGenerator<Uint8Array> | ReactReadableStream,
+  prerenderStream: ReadableStream<Uint8Array>,
   {
     getServerInsertedHTML,
     getServerInsertedMetadata,
@@ -224,20 +312,21 @@ export async function* continueDynamicPrerender(
   let generator = streamToGenerator(prerenderStream)
 
   generator = createBufferedGenerator(generator)
-  generator = await createHeadInsertion(getServerInsertedHTML, generator)
-  generator = await createHeadInsertion(getServerInsertedMetadata, generator)
+  generator = createHeadInsertion(getServerInsertedHTML, generator)
+  generator = createHeadInsertion(getServerInsertedMetadata, generator)
 
   yield* generator
 }
 
+// Update continueStaticPrerender to handle streams directly
 export async function* continueStaticPrerender(
-  prerenderStream: AsyncStreamGenerator<Uint8Array> | ReactReadableStream,
+  prerenderStream: ReadableStream<Uint8Array>,
   {
     inlinedDataStream,
     getServerInsertedHTML,
     getServerInsertedMetadata,
   }: {
-    inlinedDataStream: AsyncStreamGenerator<Uint8Array> | ReactReadableStream
+    inlinedDataStream: AsyncStreamGenerator<Uint8Array>
     getServerInsertedHTML: () => Promise<string>
     getServerInsertedMetadata: () => Promise<string>
   }
@@ -249,7 +338,7 @@ export async function* continueStaticPrerender(
   generator = await createHeadInsertion(getServerInsertedMetadata, generator)
 
   if (inlinedDataStream) {
-    generator = chainGenerators(generator, streamToGenerator(inlinedDataStream))
+    generator = chainGenerators(generator, inlinedDataStream)
   }
 
   generator = createMoveSuffix(generator)
@@ -257,14 +346,15 @@ export async function* continueStaticPrerender(
   yield* generator
 }
 
+// Update continueDynamicHTMLResume to handle streams directly
 export async function* continueDynamicHTMLResume(
-  renderStream: AsyncStreamGenerator<Uint8Array> | ReactReadableStream,
+  renderStream: ReadableStream<Uint8Array>,
   {
     inlinedDataStream,
     getServerInsertedHTML,
     getServerInsertedMetadata,
   }: {
-    inlinedDataStream: AsyncStreamGenerator<Uint8Array> | ReactReadableStream
+    inlinedDataStream: AsyncStreamGenerator<Uint8Array>
     getServerInsertedHTML: () => Promise<string>
     getServerInsertedMetadata: () => Promise<string>
   }
@@ -272,11 +362,11 @@ export async function* continueDynamicHTMLResume(
   let generator = streamToGenerator(renderStream)
 
   generator = createBufferedGenerator(generator)
-  generator = await createHeadInsertion(getServerInsertedHTML, generator)
-  generator = await createHeadInsertion(getServerInsertedMetadata, generator)
+  generator = createHeadInsertion(getServerInsertedHTML, generator)
+  generator = createHeadInsertion(getServerInsertedMetadata, generator)
 
   if (inlinedDataStream) {
-    generator = chainGenerators(generator, streamToGenerator(inlinedDataStream))
+    generator = chainGenerators(generator, inlinedDataStream)
   }
 
   generator = createMoveSuffix(generator)

@@ -99,10 +99,11 @@ import type { FallbackRouteParams } from '../request/fallback-params'
 import type { ServerComponentsHmrCache } from '../response-cache'
 import {
   chainStreams,
-  continueDynamicHTMLResume,
-  continueDynamicPrerender,
-  continueStaticPrerender,
-  createDocumentClosingStream,
+  continueFizzStream as nodeContFizzStream,
+  createDocumentClosingStream as nodeDocumentClosingStream,
+  continueDynamicHTMLResume as nodeDynamicHTMLResume,
+  continueDynamicPrerender as nodeDynamicPrerender,
+  continueStaticPrerender as nodeStaticPrerender,
   renderToInitialFizzStream,
   streamToBuffer,
   streamToString,
@@ -183,15 +184,24 @@ import {
   createRenderResumeDataCache,
 } from '../resume-data-cache/resume-data-cache'
 import { BunDirectReadableStream } from '../stream-utils/bun'
-import { continueFizzStream as bunContFizzStream } from '../stream-utils/bun-generators-helper'
-import { continueFizzStream as nodeContFizzStream } from '../stream-utils/node-web-streams-helper'
+import {
+  continueFizzStream as bunContFizzStream,
+  chainGenerators,
+  createDocumentClosingGenerator,
+  generatorToStream,
+  type AsyncStreamGenerator,
+} from '../stream-utils/bun-generators-helper'
 import { isUseCacheTimeoutError } from '../use-cache/use-cache-errors'
 import type { BinaryStreamOf } from '../utils'
 import { createComponentStylesAndScripts } from './create-component-styles-and-scripts'
 import { createServerInsertedMetadata } from './metadata-insertion/create-server-inserted-metadata'
 import { parseLoaderTree } from './parse-loader-tree'
-import { createInlinedDataGenerator as createBunInlinedDataGenerator } from './use-flight-response/bun-use-flight-responses'
-import { createInlinedDataReadableStream as createNodeInlinedDataReadableStream } from './use-flight-response/node-use-flight-response'
+
+// Update the imports to include the inlined data generators
+import { createInlinedDataGenerator } from './use-flight-response/bun-use-flight-responses'
+import { createInlinedDataReadableStream } from './use-flight-response/node-use-flight-response'
+
+// Update imports at top of file
 
 export type GetDynamicParamFromSegment = (
   // [slug] / [[slug]] / [...slug]
@@ -1425,7 +1435,12 @@ async function renderToHTMLOrFlightImpl(
       }
     }
 
-    return new RenderResult(await streamToString(response.stream), options)
+    return new RenderResult(
+      response.stream instanceof ReadableStream
+        ? await streamToString(response.stream)
+        : generatorToStream(response.stream),
+      options
+    )
   } else {
     // We're rendering dynamically
     const renderResumeDataCache =
@@ -1510,7 +1525,12 @@ async function renderToHTMLOrFlightImpl(
             postponedState
           )
 
-          return new RenderResult(stream, { metadata })
+          return new RenderResult(
+            stream instanceof ReadableStream
+              ? stream
+              : generatorToStream(stream),
+            { metadata }
+          )
         } else if (actionRequestResult.type === 'done') {
           if (actionRequestResult.result) {
             actionRequestResult.result.assignMetadata(metadata)
@@ -1562,8 +1582,10 @@ async function renderToHTMLOrFlightImpl(
       }
     }
 
-    // Create the new render result for the response.
-    return new RenderResult(stream, options)
+    return new RenderResult(
+      stream instanceof ReadableStream ? stream : generatorToStream(stream),
+      options
+    )
   }
 }
 
@@ -1669,6 +1691,23 @@ export const renderToHTMLOrFlight: AppPageRender = (
   )
 }
 
+async function readableStreamOrGeneratorToReadableStream(
+  stream: ReadableStream<Uint8Array> | AsyncStreamGenerator<Uint8Array>
+): Promise<ReadableStream<Uint8Array>> {
+  if (stream instanceof ReadableStream) {
+    return stream
+  } else {
+    return new BunDirectReadableStream({
+      pull: async (controller) => {
+        for await (const chunk of stream) {
+          controller.write(chunk)
+        }
+        controller.close()
+      },
+    })
+  }
+}
+
 async function renderToStream(
   requestStore: RequestStore,
   req: BaseNextRequest,
@@ -1678,7 +1717,7 @@ async function renderToStream(
   tree: LoaderTree,
   formState: any,
   postponedState: PostponedState | null
-): Promise<ReadableStream<Uint8Array>> {
+): Promise<ReadableStream<Uint8Array> | AsyncStreamGenerator<Uint8Array>> {
   const renderOpts = ctx.renderOpts
   const ComponentMod = renderOpts.ComponentMod
   // TODO: fix this typescript
@@ -1860,16 +1899,29 @@ async function renderToStream(
         // We have a complete HTML Document in the prerender but we need to
         // still include the new server component render because it was not included
         // in the static prelude.
-        const inlinedReactServerDataStream = createInlinedDataReadableStream(
-          reactServerResult.tee(),
-          ctx.nonce,
-          formState
-        )
+        if (isBun) {
+          const inlinedReactServerDataStream = createInlinedDataGenerator(
+            reactServerResult.tee(),
+            ctx.nonce,
+            formState
+          )
 
-        return chainStreams(
-          inlinedReactServerDataStream,
-          createDocumentClosingStream()
-        )
+          return chainGenerators(
+            inlinedReactServerDataStream,
+            createDocumentClosingGenerator()
+          )
+        } else {
+          const inlinedReactServerDataStream = createInlinedDataReadableStream(
+            reactServerResult.tee(),
+            ctx.nonce,
+            formState
+          )
+
+          return chainStreams(
+            inlinedReactServerDataStream,
+            createDocumentClosingStream()
+          )
+        }
       } else if (postponedState) {
         // We assume we have dynamic HTML requiring a resume render to complete
         const postponed = getPostponedFromState(postponedState)
@@ -1902,14 +1954,13 @@ async function renderToStream(
           basePath: renderOpts.basePath,
           tracingMetadata: tracingMetadata,
         })
+
         return await continueDynamicHTMLResume(htmlStream, {
-          inlinedDataStream: createInlinedDataReadableStream(
-            reactServerResult.consume(),
-            ctx.nonce,
-            formState
-          ),
           getServerInsertedHTML,
           getServerInsertedMetadata,
+          flightStream: reactServerResult.consume(),
+          nonce: ctx.nonce,
+          formState: formState,
         })
       }
     }
@@ -2133,9 +2184,8 @@ async function renderToStream(
         renderOpts.supportsDynamicResponse !== true ||
         !!renderOpts.shouldWaitOnAllReady
       const validateRootLayout = renderOpts.dev
-      return await (isBun ? bunContFizzStream : nodeContFizzStream)(
-        fizzStream,
-        {
+      return readableStreamOrGeneratorToReadableStream(
+        await (isBun ? bunContFizzStream : nodeContFizzStream)(fizzStream, {
           inlinedDataStream: createInlinedDataReadableStream(
             // This is intentionally using the readable datastream from the
             // main render rather than the flight data from the error page
@@ -2154,7 +2204,7 @@ async function renderToStream(
           }),
           getServerInsertedMetadata,
           validateRootLayout,
-        }
+        })
       )
     } catch (finalErr: any) {
       if (
@@ -2206,7 +2256,7 @@ async function spawnDynamicValidationInDev(
     type: 'prerender',
     phase: 'render',
     implicitTags: [],
-    renderSignal: renderController.signal,
+    renderSignal: initialServerPrerenderController.signal,
     controller: initialServerPrerenderController,
     cacheSignal,
     dynamicTracking: null,
@@ -2523,7 +2573,7 @@ async function spawnDynamicValidationInDev(
 }
 
 type PrerenderToStreamResult = {
-  stream: ReadableStream<Uint8Array>
+  stream: ReadableStream<Uint8Array> | AsyncStreamGenerator<Uint8Array>
   digestErrorsMap: Map<string, DigestedError>
   ssrErrors: Array<unknown>
   dynamicAccess?: null | Array<DynamicAccess>
@@ -3129,13 +3179,11 @@ async function prerenderToStream(
             digestErrorsMap: reactServerErrorsByDigest,
             ssrErrors: allCapturedErrors,
             stream: await continueStaticPrerender(htmlStream, {
-              inlinedDataStream: createInlinedDataReadableStream(
-                reactServerResult.consumeAsStream(),
-                ctx.nonce,
-                formState
-              ),
               getServerInsertedHTML,
               getServerInsertedMetadata,
+              flightStream: reactServerResult.consumeAsStream(),
+              nonce: ctx.nonce,
+              formState: formState,
             }),
             dynamicAccess: consumeDynamicAccess(
               serverDynamicTracking,
@@ -3548,23 +3596,26 @@ async function prerenderToStream(
           tracingMetadata: tracingMetadata,
         })
         const validateRootLayout = renderOpts.dev
+
+        const streamOrGenerator = await (
+          isBun ? bunContFizzStream : nodeContFizzStream
+        )(htmlStream!, {
+          inlinedDataStream: createInlinedDataReadableStream(
+            serverPrerenderStreamResult.asStream(),
+            ctx.nonce,
+            formState
+          ),
+          isStaticGeneration: true,
+          getServerInsertedHTML,
+          getServerInsertedMetadata,
+          validateRootLayout,
+        })
+
         return {
           digestErrorsMap: reactServerErrorsByDigest,
           ssrErrors: allCapturedErrors,
-          stream: await (isBun ? bunContFizzStream : nodeContFizzStream)(
-            htmlStream!,
-            {
-              inlinedDataStream: createInlinedDataReadableStream(
-                serverPrerenderStreamResult.asStream(),
-                ctx.nonce,
-                formState
-              ),
-              isStaticGeneration: true,
-              getServerInsertedHTML,
-              getServerInsertedMetadata,
-              validateRootLayout,
-            }
-          ),
+          stream:
+            await readableStreamOrGeneratorToReadableStream(streamOrGenerator),
           dynamicAccess: consumeDynamicAccess(
             serverDynamicTracking,
             clientDynamicTracking
@@ -3791,11 +3842,9 @@ async function prerenderToStream(
           digestErrorsMap: reactServerErrorsByDigest,
           ssrErrors: allCapturedErrors,
           stream: await continueStaticPrerender(htmlStream, {
-            inlinedDataStream: createInlinedDataReadableStream(
-              reactServerResult.consumeAsStream(),
-              ctx.nonce,
-              formState
-            ),
+            flightStream: htmlStream,
+            nonce: ctx.nonce,
+            formState,
             getServerInsertedHTML,
             getServerInsertedMetadata,
           }),
@@ -4259,26 +4308,153 @@ function useFlightStream<T>(
   return flightStreamHook(flightStream, clientReferenceManifest, nonce)
 }
 
-// Update the createInlinedDataReadableStream function to use Bun-specific version when appropriate
-function createInlinedDataReadableStream(
-  flightStream: ReadableStream<Uint8Array>,
-  nonce: string | undefined,
-  formState: unknown | null
-): ReadableStream<Uint8Array> {
+// Wrapper function for continueDynamicPrerender
+async function continueDynamicPrerender(
+  stream: ReadableStream<Uint8Array>,
+  options: {
+    getServerInsertedHTML: () => Promise<string>
+    getServerInsertedMetadata: () => Promise<string>
+  }
+): Promise<ReadableStream<Uint8Array>> {
   if (isBun) {
-    return new BunDirectReadableStream({
+    return new BunDirectReadableStream<Uint8Array>({
       async pull(controller) {
-        const generator = createBunInlinedDataGenerator(
-          flightStream,
-          nonce,
-          formState
-        )
-        for await (const chunk of generator) {
-          controller.write(chunk)
+        try {
+          const generator = bunContFizzStream(stream, {
+            ...options,
+            isStaticGeneration: false,
+          })
+          for await (const chunk of generator) {
+            controller.write(chunk)
+          }
+          controller.close()
+        } catch (err) {
+          controller.error(err)
         }
-        controller.close()
       },
     })
   }
-  return createNodeInlinedDataReadableStream(flightStream, nonce, formState)
+  return nodeDynamicPrerender(stream, options)
+}
+
+// Wrapper function for continueStaticPrerender
+async function continueStaticPrerender(
+  stream: ReadableStream<Uint8Array> | AsyncStreamGenerator<Uint8Array>,
+  options: {
+    flightStream: ReadableStream<Uint8Array>
+    nonce: string | undefined
+    formState: unknown | null
+    getServerInsertedHTML: () => Promise<string>
+    getServerInsertedMetadata: () => Promise<string>
+  }
+): Promise<ReadableStream<Uint8Array>> {
+  if (isBun) {
+    return new BunDirectReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const inlinedDataGenerator = createInlinedDataGenerator(
+            options.flightStream,
+            options.nonce,
+            options.formState
+          )
+
+          const generator = bunContFizzStream(
+            stream as ReadableStream<Uint8Array>,
+            {
+              getServerInsertedHTML: options.getServerInsertedHTML,
+              getServerInsertedMetadata: options.getServerInsertedMetadata,
+              inlinedDataStream: inlinedDataGenerator,
+              isStaticGeneration: true,
+            }
+          )
+
+          for await (const chunk of generator) {
+            controller.write(chunk)
+          }
+          controller.close()
+        } catch (err) {
+          controller.error(err)
+        }
+      },
+    })
+  }
+
+  // For Node, we need to create a ReadableStream
+  return nodeStaticPrerender(stream as ReadableStream<Uint8Array>, {
+    getServerInsertedHTML: options.getServerInsertedHTML,
+    getServerInsertedMetadata: options.getServerInsertedMetadata,
+    inlinedDataStream: createInlinedDataReadableStream(
+      options.flightStream,
+      options.nonce,
+      options.formState
+    ),
+  })
+}
+
+// Wrapper function for continueDynamicHTMLResume
+async function continueDynamicHTMLResume(
+  stream: ReadableStream<Uint8Array>,
+  options: {
+    flightStream: ReadableStream<Uint8Array>
+    nonce: string | undefined
+    formState: unknown | null
+    getServerInsertedHTML: () => Promise<string>
+    getServerInsertedMetadata: () => Promise<string>
+  }
+): Promise<ReadableStream<Uint8Array>> {
+  if (isBun) {
+    return new BunDirectReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const inlinedDataGenerator = createInlinedDataGenerator(
+            options.flightStream,
+            options.nonce,
+            options.formState
+          )
+
+          const generator = bunContFizzStream(stream, {
+            getServerInsertedHTML: options.getServerInsertedHTML,
+            getServerInsertedMetadata: options.getServerInsertedMetadata,
+            inlinedDataStream: inlinedDataGenerator,
+            isStaticGeneration: false,
+          })
+
+          for await (const chunk of generator) {
+            controller.write(chunk)
+          }
+          controller.close()
+        } catch (err) {
+          controller.error(err)
+        }
+      },
+    })
+  }
+
+  // For Node, we need to create a ReadableStream
+  return nodeDynamicHTMLResume(stream, {
+    getServerInsertedHTML: options.getServerInsertedHTML,
+    getServerInsertedMetadata: options.getServerInsertedMetadata,
+    inlinedDataStream: createInlinedDataReadableStream(
+      options.flightStream,
+      options.nonce,
+      options.formState
+    ),
+  })
+}
+
+// Wrapper function for createDocumentClosingStream
+function createDocumentClosingStream(): ReadableStream<Uint8Array> {
+  if (isBun) {
+    return new BunDirectReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          controller.write(new TextEncoder().encode('</body></html>'))
+          controller.close()
+        } catch (err) {
+          controller.error(err)
+        }
+      },
+    })
+  }
+  return nodeDocumentClosingStream()
 }

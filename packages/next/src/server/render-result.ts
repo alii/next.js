@@ -192,6 +192,7 @@ export default class RenderResult<
     if (this.response === null) {
       throw new Error('Invariant: null responses cannot be streamed')
     }
+
     if (typeof this.response === 'string') {
       throw new Error('Invariant: static responses cannot be streamed')
     }
