@@ -472,12 +472,6 @@ export interface ExperimentalConfig {
    */
   taint?: boolean
 
-  /**
-   * Enables leveraging experimental captureOwnerStack API in React,
-   * to create a better stack trace for React errors.
-   */
-  reactOwnerStack?: boolean
-
   serverActions?: {
     /**
      * Allows adjusting body parser size limit for server actions.
@@ -1244,7 +1238,6 @@ export const defaultConfig: NextConfig = {
         process.env.__NEXT_EXPERIMENTAL_PPR === 'true'
       ),
     authInterrupts: false,
-    reactOwnerStack: false,
     webpackBuildWorker: undefined,
     webpackMemoryOptimizations: false,
     optimizeServerReact: true,
@@ -1262,7 +1255,7 @@ export const defaultConfig: NextConfig = {
     staticGenerationMinPagesPerWorker: 25,
     dynamicIO: false,
     inlineCss: false,
-    newDevOverlay: false,
+    newDevOverlay: true,
     streamingMetadata: false,
     htmlLimitedBots: undefined,
     useCache: undefined,

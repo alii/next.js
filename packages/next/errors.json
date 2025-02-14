@@ -637,19 +637,8 @@
   "636": "Invariant: frames must be a function when the React version has React.use. This is a bug in Next.js.",
   "637": "Invariant: frames must be an array when the React version does not have React.use. This is a bug in Next.js.",
   "638": "The following tags are missing in the Root Layout: %s.\\nRead more at https://nextjs.org/docs/messages/missing-root-layout-tags",
-  "639": "Invariant: App Route Route Modules cannot be used with the edge runtime",
-  "640": "\"next start\" does not work with \"output: bun\" configuration. Use \"bun .next/bun/server.js\" instead.",
-  "641": "Readable controller not initialized (writable.close() callback)",
-  "642": "Invariant: unknown response type for RenderResult.toBodyInit(). This is a bug in Next.js",
-  "643": "Readable controller not initialized (writable.write() callback)",
-  "644": "Readable controller not initialized (transform.enqueue() callback)",
-  "645": "Readable controller not initialized (writable.abort() callback)",
-  "646": "onClose() is not implemented in BunNextResponse",
-  "647": "Invalid request or response",
-  "648": "WebNextResponse may not be used inside renderToResponseWithComponents",
-  "649": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime",
-  "650": "matchOnRes() received an invalid request or response",
-  "651": "matchOnReqRes() received an invalid request or response",
-  "652": "matchOnReq() received an invalid request",
-  "653": "Missing required elements: %s%s"
+  "639": "unstable_rootParams() can only be used within App Router.",
+  "640": "Route %s used \"unstable_rootParams\" inside \\`\"use cache\"\\` or \\`unstable_cache\\`. Support for this API inside cache scopes is planned for a future version of Next.js.",
+  "641": "Route %s used \\`unstable_rootParams()\\` in Pages Router. This API is only available within App Router.",
+  "642": "Route %s used \\`unstable_rootParams()\\` inside \\`\"use cache\"\\` or \\`unstable_cache\\`. Support for this API inside cache scopes is planned for a future version of Next.js."
 }

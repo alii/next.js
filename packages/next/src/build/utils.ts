@@ -1829,7 +1829,13 @@ export function isWebpackClientOnlyLayer(
 export function isWebpackDefaultLayer(
   layer: WebpackLayerName | null | undefined
 ): boolean {
-  return layer === null || layer === undefined
+  return (
+    layer === null ||
+    layer === undefined ||
+    layer === WEBPACK_LAYERS.pagesDirBrowser ||
+    layer === WEBPACK_LAYERS.pagesDirEdge ||
+    layer === WEBPACK_LAYERS.pagesDirNode
+  )
 }
 
 export function isWebpackBundledLayer(

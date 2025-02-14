@@ -1,33 +1,32 @@
 import type { IncomingMessage, ServerResponse } from 'http'
-import type { UnwrapPromise } from '../../../lib/coalesced-function'
-import type { Header, Rewrite } from '../../../lib/load-custom-routes'
-import type { PatchMatcher } from '../../../shared/lib/router/utils/path-match'
-import type { Redirect } from '../../../types'
-import type { NextConfigComplete } from '../../config-shared'
-import type { NextUrlWithParsedQuery } from '../../request-meta'
-import type { RenderServer, initialize } from '../router-server'
-import type { FsOutput } from './filesystem'
-
 import setupDebug from 'next/dist/compiled/debug'
 import path from 'node:path'
 import url from 'url'
+import type { UnwrapPromise } from '../../../lib/coalesced-function'
+import type { Header, Rewrite } from '../../../lib/load-custom-routes'
 import { getRedirectStatus } from '../../../lib/redirect-status'
 import { getHostname } from '../../../shared/lib/get-hostname'
 import { detectDomainLocale } from '../../../shared/lib/i18n/detect-domain-locale'
 import { normalizeLocalePath } from '../../../shared/lib/i18n/normalize-locale-path'
 import { addPathPrefix } from '../../../shared/lib/router/utils/add-path-prefix'
 import { pathHasPrefix } from '../../../shared/lib/router/utils/path-has-prefix'
+import type { PatchMatcher } from '../../../shared/lib/router/utils/path-match'
 import { getRelativeURL } from '../../../shared/lib/router/utils/relativize-url'
 import { removePathPrefix } from '../../../shared/lib/router/utils/remove-path-prefix'
 import { normalizeRepeatedSlashes } from '../../../shared/lib/utils'
+import type { Redirect } from '../../../types'
 import { getCloneableBody } from '../../body-streams'
+import type { NextConfigComplete } from '../../config-shared'
 import { BasePathPathnameNormalizer } from '../../normalizers/request/base-path'
 import { NextDataPathnameNormalizer } from '../../normalizers/request/next-data'
 import { isAbortError } from '../../pipe-readable'
+import type { NextUrlWithParsedQuery } from '../../request-meta'
 import { stringifyQuery } from '../../server-route-utils'
 import { toNodeOutgoingHttpHeaders } from '../../web/utils'
 import { formatHostname } from '../format-hostname'
+import type { RenderServer, initialize } from '../router-server'
 import { filterReqHeaders, ipcForbiddenHeaders } from '../server-ipc/utils'
+import type { FsOutput } from './filesystem'
 
 import type { TLSSocket } from 'tls'
 import {
@@ -38,10 +37,10 @@ import {
 } from '../../../client/components/app-router-headers'
 import { getSelectedParams } from '../../../client/components/router-reducer/compute-changed-path'
 import { isInterceptionRouteRewrite } from '../../../lib/generate-interception-routes-rewrites'
-import { parseUrl } from '../../../shared/lib/router/utils/parse-url'
 import {
   compileNonPath,
   matchHas,
+  parseDestination,
   prepareDestination,
 } from '../../../shared/lib/router/utils/prepare-destination'
 import { parseAndValidateFlightRouterState } from '../../app-render/parse-and-validate-flight-router-state'
@@ -737,7 +736,11 @@ export function getResolveRoutes(
           // the response headers. We don't want to use the following
           // `parsedDestination` as the query object is mutated.
           const { search: destinationSearch, pathname: destinationPathname } =
-            parseUrl(route.destination)
+            parseDestination({
+              destination: route.destination,
+              params: rewriteParams,
+              query: parsedUrl.query,
+            })
 
           const { parsedDestination } = prepareDestination({
             appendParamsToQuery: true,

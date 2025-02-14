@@ -59,11 +59,14 @@ import {
   StaticGenBailoutError,
   isStaticGenBailoutError,
 } from '../../client/components/static-generation-bailout'
+import { INFINITE_CACHE } from '../../lib/constants'
 import { getStackWithoutErrorMessage } from '../../lib/format-server-error'
+import isError from '../../lib/is-error'
 import {
   createMetadataContext,
   createTrackedMetadataContext,
 } from '../../lib/metadata/metadata-context'
+import type { MetadataErrorType } from '../../lib/metadata/resolve-metadata'
 import { waitAtLeastOneReactRenderTask } from '../../lib/scheduler'
 import { InvariantError } from '../../shared/lib/invariant-error'
 import { isBailoutToCSRError } from '../../shared/lib/lazy-dynamic/bailout-to-csr'
@@ -98,6 +101,18 @@ import RenderResult, {
 import type { FallbackRouteParams } from '../request/fallback-params'
 import type { ServerComponentsHmrCache } from '../response-cache'
 import {
+  createPrerenderResumeDataCache,
+  createRenderResumeDataCache,
+} from '../resume-data-cache/resume-data-cache'
+import { BunDirectReadableStream } from '../stream-utils/bun'
+import {
+  continueFizzStream as bunContFizzStream,
+  chainGenerators,
+  createDocumentClosingGenerator,
+  generatorToStream,
+  type AsyncStreamGenerator,
+} from '../stream-utils/bun-generators-helper'
+import {
   chainStreams,
   continueFizzStream as nodeContFizzStream,
   createDocumentClosingStream as nodeDocumentClosingStream,
@@ -108,6 +123,8 @@ import {
   streamToBuffer,
   streamToString,
 } from '../stream-utils/node-web-streams-helper'
+import { isUseCacheTimeoutError } from '../use-cache/use-cache-errors'
+import type { BinaryStreamOf } from '../utils'
 import { appendMutableCookies } from '../web/spec-extension/adapters/request-cookies'
 import { handleAction } from './action-handler'
 import { createServerModuleMap } from './action-utils'
@@ -123,7 +140,8 @@ import {
 } from './app-render-prerender-utils'
 import { scheduleInSequentialTasks } from './app-render-render-utils'
 import { CacheSignal } from './cache-signal'
-import { createComponentTree } from './create-component-tree'
+import { createComponentStylesAndScripts } from './create-component-styles-and-scripts'
+import { createComponentTree, getRootParams } from './create-component-tree'
 import {
   createFlightReactServerErrorHandler,
   createHTMLErrorHandler,
@@ -156,7 +174,9 @@ import {
   getShortDynamicParamType,
 } from './get-short-dynamic-param-type'
 import { makeGetServerInsertedHTML } from './make-get-server-inserted-html'
+import { createServerInsertedMetadata } from './metadata-insertion/create-server-inserted-metadata'
 import { parseAndValidateFlightRouterState } from './parse-and-validate-flight-router-state'
+import { parseLoaderTree } from './parse-loader-tree'
 import {
   DynamicState,
   getDynamicDataPostponedState,
@@ -168,40 +188,19 @@ import {
 import { printDebugThrownValueForProspectiveRender } from './prospective-render-utils'
 import { getRequiredScripts } from './required-scripts'
 import { createServerInsertedHTML } from './server-inserted-html'
-import { useFlightStream as useBunFlightStream } from './use-flight-response/bun-use-flight-responses'
-import { useFlightStream as useNodeFlightStream } from './use-flight-response/node-use-flight-response'
+import {
+  createInlinedDataGenerator,
+  useFlightStream as useBunFlightStream,
+} from './use-flight-response/bun-use-flight-responses'
+import {
+  createInlinedDataReadableStream,
+  useFlightStream as useNodeFlightStream,
+} from './use-flight-response/node-use-flight-response'
 import { walkTreeWithFlightRouterState } from './walk-tree-with-flight-router-state'
 import {
   workUnitAsyncStorage,
   type PrerenderStore,
 } from './work-unit-async-storage.external'
-
-import { INFINITE_CACHE } from '../../lib/constants'
-import isError from '../../lib/is-error'
-import type { MetadataErrorType } from '../../lib/metadata/resolve-metadata'
-import {
-  createPrerenderResumeDataCache,
-  createRenderResumeDataCache,
-} from '../resume-data-cache/resume-data-cache'
-import { BunDirectReadableStream } from '../stream-utils/bun'
-import {
-  continueFizzStream as bunContFizzStream,
-  chainGenerators,
-  createDocumentClosingGenerator,
-  generatorToStream,
-  type AsyncStreamGenerator,
-} from '../stream-utils/bun-generators-helper'
-import { isUseCacheTimeoutError } from '../use-cache/use-cache-errors'
-import type { BinaryStreamOf } from '../utils'
-import { createComponentStylesAndScripts } from './create-component-styles-and-scripts'
-import { createServerInsertedMetadata } from './metadata-insertion/create-server-inserted-metadata'
-import { parseLoaderTree } from './parse-loader-tree'
-
-// Update the imports to include the inlined data generators
-import { createInlinedDataGenerator } from './use-flight-response/bun-use-flight-responses'
-import { createInlinedDataReadableStream } from './use-flight-response/node-use-flight-response'
-
-// Update imports at top of file
 
 export type GetDynamicParamFromSegment = (
   // [slug] / [[slug]] / [...slug]
@@ -450,6 +449,17 @@ function NonIndex({ ctx }: { ctx: AppRenderContext }) {
   return null
 }
 
+function getServeStreamingMetadata(ctx: AppRenderContext) {
+  const isRoutePPREnabled = !!ctx.renderOpts.experimental.isRoutePPREnabled
+  const serveStreamingMetadata = !!ctx.renderOpts.serveStreamingMetadata
+  // If the route is in PPR and the special env is not set, disable the streaming metadata.
+  // TODO: enable streaming metadata in PPR mode by default once it's ready.
+  if (isRoutePPREnabled && process.env.__NEXT_EXPERIMENTAL_PPR !== 'true') {
+    return false
+  }
+  return serveStreamingMetadata
+}
+
 /**
  * This is used by server actions & client-side navigations to generate RSC data from a client-side request.
  * This function is only called on "dynamic" requests (ie, there wasn't already a static response).
@@ -489,6 +499,8 @@ async function generateDynamicRSCPayload(
     url,
   } = ctx
 
+  const serveStreamingMetadata = getServeStreamingMetadata(ctx)
+
   if (!options?.skipFlight) {
     const preloadCallbacks: PreloadCallbacks = []
 
@@ -508,7 +520,7 @@ async function generateDynamicRSCPayload(
         workStore,
         MetadataBoundary,
         ViewportBoundary,
-        serveStreamingMetadata: !!ctx.renderOpts.serveStreamingMetadata,
+        serveStreamingMetadata,
       })
 
     const { StreamingMetadata, StaticMetadata } =
@@ -517,7 +529,7 @@ async function generateDynamicRSCPayload(
           // Adding requestId as react key to make metadata remount for each render
           <MetadataTree key={requestId} />
         )
-      }, !!ctx.renderOpts.serveStreamingMetadata)
+      }, serveStreamingMetadata)
 
     flightData = (
       await walkTreeWithFlightRouterState({
@@ -676,6 +688,11 @@ async function warmupDevRender(
     )
   }
 
+  const rootParams = getRootParams(
+    ctx.componentMod.tree,
+    ctx.getDynamicParamFromSegment
+  )
+
   function onFlightDataRenderError(err: DigestedError) {
     return renderOpts.onInstrumentationRequestError?.(
       err,
@@ -699,6 +716,7 @@ async function warmupDevRender(
   const prerenderStore: PrerenderStore = {
     type: 'prerender',
     phase: 'render',
+    rootParams,
     implicitTags: [],
     renderSignal: renderController.signal,
     controller: prerenderController,
@@ -795,6 +813,7 @@ async function getRSCPayload(
     getDynamicParamFromSegment,
     query
   )
+  const serveStreamingMetadata = getServeStreamingMetadata(ctx)
 
   const searchParams = createServerSearchParamsForMetadata(query, workStore)
   const { ViewportTree, MetadataTree, getViewportReady, getMetadataReady } =
@@ -813,7 +832,7 @@ async function getRSCPayload(
       workStore,
       MetadataBoundary,
       ViewportBoundary,
-      serveStreamingMetadata: !!ctx.renderOpts.serveStreamingMetadata,
+      serveStreamingMetadata: serveStreamingMetadata,
     })
 
   const preloadCallbacks: PreloadCallbacks = []
@@ -824,7 +843,7 @@ async function getRSCPayload(
         // Not add requestId as react key to ensure segment prefetch could result consistently if nothing changed
         <MetadataTree />
       )
-    }, !!ctx.renderOpts.serveStreamingMetadata)
+    }, serveStreamingMetadata)
 
   const seedData = await createComponentTree({
     ctx,
@@ -926,6 +945,7 @@ async function getErrorRSCPayload(
     workStore,
   } = ctx
 
+  const serveStreamingMetadata = getServeStreamingMetadata(ctx)
   const searchParams = createServerSearchParamsForMetadata(query, workStore)
   const { MetadataTree, ViewportTree } = createMetadataComponents({
     tree,
@@ -940,7 +960,7 @@ async function getErrorRSCPayload(
     workStore,
     MetadataBoundary,
     ViewportBoundary,
-    serveStreamingMetadata: !!ctx.renderOpts.serveStreamingMetadata,
+    serveStreamingMetadata: serveStreamingMetadata,
   })
 
   const { StreamingMetadata, StaticMetadata } =
@@ -951,7 +971,7 @@ async function getErrorRSCPayload(
           <MetadataTree key={requestId} />
         </React.Fragment>
       ),
-      !!ctx.renderOpts.serveStreamingMetadata
+      serveStreamingMetadata
     )
 
   const initialHead = (
@@ -1447,10 +1467,12 @@ async function renderToHTMLOrFlightImpl(
       renderOpts.devRenderResumeDataCache ??
       postponedState?.renderResumeDataCache
 
+    const rootParams = getRootParams(loaderTree, ctx.getDynamicParamFromSegment)
     const requestStore = createRequestStoreForRender(
       req,
       res,
       url,
+      rootParams,
       implicitTags,
       renderOpts.onUpdateCookies,
       renderOpts.previewProps,
@@ -1989,11 +2011,7 @@ async function renderToStream(
           })
         },
         maxHeadersLength: renderOpts.reactMaxHeadersLength,
-        // When debugging the static shell, client-side rendering should be
-        // disabled to prevent blanking out the page.
-        bootstrapScripts: renderOpts.isDebugStaticShell
-          ? []
-          : [bootstrapScript],
+        bootstrapScripts: [bootstrapScript],
         formState,
       }
     )
@@ -2238,6 +2256,10 @@ async function spawnDynamicValidationInDev(
   requestStore: RequestStore
 ): Promise<void> {
   const { componentMod: ComponentMod } = ctx
+  const rootParams = getRootParams(
+    ComponentMod.tree,
+    ctx.getDynamicParamFromSegment
+  )
 
   // Prerender controller represents the lifetime of the prerender.
   // It will be aborted when a Task is complete or a synchronously aborting
@@ -2255,6 +2277,7 @@ async function spawnDynamicValidationInDev(
   const initialServerPrerenderStore: PrerenderStore = {
     type: 'prerender',
     phase: 'render',
+    rootParams,
     implicitTags: [],
     renderSignal: initialServerPrerenderController.signal,
     controller: initialServerPrerenderController,
@@ -2271,6 +2294,7 @@ async function spawnDynamicValidationInDev(
   const initialClientPrerenderStore: PrerenderStore = {
     type: 'prerender',
     phase: 'render',
+    rootParams,
     implicitTags: [],
     renderSignal: initialClientController.signal,
     controller: initialClientController,
@@ -2416,6 +2440,7 @@ async function spawnDynamicValidationInDev(
   const finalServerPrerenderStore: PrerenderStore = {
     type: 'prerender',
     phase: 'render',
+    rootParams,
     implicitTags: [],
     renderSignal: finalServerController.signal,
     controller: finalServerController,
@@ -2436,6 +2461,7 @@ async function spawnDynamicValidationInDev(
   const finalClientPrerenderStore: PrerenderStore = {
     type: 'prerender',
     phase: 'render',
+    rootParams,
     implicitTags: [],
     renderSignal: finalClientController.signal,
     controller: finalClientController,
@@ -2606,6 +2632,7 @@ async function prerenderToStream(
   // because some shared APIs expect a formState value and this is slightly
   // more explicit than making it an optional function argument
   const formState = null
+  const rootParams = getRootParams(tree, ctx.getDynamicParamFromSegment)
 
   const renderOpts = ctx.renderOpts
   const ComponentMod = renderOpts.ComponentMod
@@ -2754,6 +2781,7 @@ async function prerenderToStream(
         const initialServerPrerenderStore: PrerenderStore = (prerenderStore = {
           type: 'prerender',
           phase: 'render',
+          rootParams,
           implicitTags: implicitTags,
           renderSignal: initialServerRenderController.signal,
           controller: initialServerPrerenderController,
@@ -2847,6 +2875,7 @@ async function prerenderToStream(
           const initialClientPrerenderStore: PrerenderStore = {
             type: 'prerender',
             phase: 'render',
+            rootParams,
             implicitTags: implicitTags,
             renderSignal: initialClientController.signal,
             controller: initialClientController,
@@ -2899,11 +2928,7 @@ async function prerenderToStream(
                       )
                     }
                   },
-                  // When debugging the static shell, client-side rendering should be
-                  // disabled to prevent blanking out the page.
-                  bootstrapScripts: renderOpts.isDebugStaticShell
-                    ? []
-                    : [bootstrapScript],
+                  bootstrapScripts: [bootstrapScript],
                 }
               ),
             () => {
@@ -2935,6 +2960,7 @@ async function prerenderToStream(
         const finalRenderPrerenderStore: PrerenderStore = (prerenderStore = {
           type: 'prerender',
           phase: 'render',
+          rootParams,
           implicitTags: implicitTags,
           renderSignal: finalServerController.signal,
           controller: finalServerController,
@@ -3003,6 +3029,7 @@ async function prerenderToStream(
         const finalClientPrerenderStore: PrerenderStore = {
           type: 'prerender',
           phase: 'render',
+          rootParams,
           implicitTags: implicitTags,
           renderSignal: finalClientController.signal,
           controller: finalClientController,
@@ -3066,11 +3093,7 @@ async function prerenderToStream(
                   })
                 },
                 maxHeadersLength: renderOpts.reactMaxHeadersLength,
-                // When debugging the static shell, client-side rendering should be
-                // disabled to prevent blanking out the page.
-                bootstrapScripts: renderOpts.isDebugStaticShell
-                  ? []
-                  : [bootstrapScript],
+                bootstrapScripts: [bootstrapScript],
               }
             ),
           () => {
@@ -3239,6 +3262,7 @@ async function prerenderToStream(
         const initialServerPrerenderStore: PrerenderStore = (prerenderStore = {
           type: 'prerender',
           phase: 'render',
+          rootParams,
           implicitTags: implicitTags,
           renderSignal: initialServerRenderController.signal,
           controller: initialServerPrerenderController,
@@ -3255,6 +3279,7 @@ async function prerenderToStream(
         const initialClientPrerenderStore: PrerenderStore = (prerenderStore = {
           type: 'prerender',
           phase: 'render',
+          rootParams,
           implicitTags: implicitTags,
           renderSignal: initialClientController.signal,
           controller: initialClientController,
@@ -3371,11 +3396,7 @@ async function prerenderToStream(
                   )
                 }
               },
-              // When debugging the static shell, client-side rendering should be
-              // disabled to prevent blanking out the page.
-              bootstrapScripts: renderOpts.isDebugStaticShell
-                ? []
-                : [bootstrapScript],
+              bootstrapScripts: [bootstrapScript],
             }
           )
           pendingInitialClientResult.catch((err: unknown) => {
@@ -3410,6 +3431,7 @@ async function prerenderToStream(
         const finalServerPrerenderStore: PrerenderStore = (prerenderStore = {
           type: 'prerender',
           phase: 'render',
+          rootParams,
           implicitTags: implicitTags,
           renderSignal: finalServerController.signal,
           controller: finalServerController,
@@ -3433,6 +3455,7 @@ async function prerenderToStream(
         const finalClientPrerenderStore: PrerenderStore = (prerenderStore = {
           type: 'prerender',
           phase: 'render',
+          rootParams,
           implicitTags: implicitTags,
           renderSignal: finalClientController.signal,
           controller: finalClientController,
@@ -3529,11 +3552,7 @@ async function prerenderToStream(
 
                     return htmlRendererErrorHandler(err, errorInfo)
                   },
-                  // When debugging the static shell, client-side rendering should be
-                  // disabled to prevent blanking out the page.
-                  bootstrapScripts: renderOpts.isDebugStaticShell
-                    ? []
-                    : [bootstrapScript],
+                  bootstrapScripts: [bootstrapScript],
                 }
               ),
             () => {
@@ -3637,6 +3656,7 @@ async function prerenderToStream(
       const reactServerPrerenderStore: PrerenderStore = (prerenderStore = {
         type: 'prerender-ppr',
         phase: 'render',
+        rootParams,
         implicitTags: implicitTags,
         dynamicTracking,
         revalidate: INFINITE_CACHE,
@@ -3669,6 +3689,7 @@ async function prerenderToStream(
       const ssrPrerenderStore: PrerenderStore = {
         type: 'prerender-ppr',
         phase: 'render',
+        rootParams,
         implicitTags: implicitTags,
         dynamicTracking,
         revalidate: INFINITE_CACHE,
@@ -3698,11 +3719,7 @@ async function prerenderToStream(
             })
           },
           maxHeadersLength: renderOpts.reactMaxHeadersLength,
-          // When debugging the static shell, client-side rendering should be
-          // disabled to prevent blanking out the page.
-          bootstrapScripts: renderOpts.isDebugStaticShell
-            ? []
-            : [bootstrapScript],
+          bootstrapScripts: [bootstrapScript],
         }
       )
       const getServerInsertedHTML = makeGetServerInsertedHTML({
@@ -3860,6 +3877,7 @@ async function prerenderToStream(
       const prerenderLegacyStore: PrerenderStore = (prerenderStore = {
         type: 'prerender-legacy',
         phase: 'render',
+        rootParams,
         implicitTags: implicitTags,
         revalidate: INFINITE_CACHE,
         expire: INFINITE_CACHE,
@@ -3905,11 +3923,7 @@ async function prerenderToStream(
         {
           onError: htmlRendererErrorHandler,
           nonce: ctx.nonce,
-          // When debugging the static shell, client-side rendering should be
-          // disabled to prevent blanking out the page.
-          bootstrapScripts: renderOpts.isDebugStaticShell
-            ? []
-            : [bootstrapScript],
+          bootstrapScripts: [bootstrapScript],
         }
       )
 
@@ -4026,6 +4040,7 @@ async function prerenderToStream(
     const prerenderLegacyStore: PrerenderStore = (prerenderStore = {
       type: 'prerender-legacy',
       phase: 'render',
+      rootParams,
       implicitTags: implicitTags,
       revalidate:
         typeof prerenderStore?.revalidate !== 'undefined'
