@@ -3,7 +3,7 @@ import { renderToReadableStream } from 'react-dom/server.edge'
 import {
   ServerInsertedMetadataContext,
   type MetadataResolver,
-} from '../../../shared/lib/server-inserted-metadata.shared-runtime'
+} from '../../../shared/lib/server-inserted-metadata.shared-runtime.js'
 import { renderToString } from '../render-to-string'
 
 export function createServerInsertedMetadata() {

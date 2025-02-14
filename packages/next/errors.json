@@ -640,5 +640,19 @@
   "639": "unstable_rootParams() can only be used within App Router.",
   "640": "Route %s used \"unstable_rootParams\" inside \\`\"use cache\"\\` or \\`unstable_cache\\`. Support for this API inside cache scopes is planned for a future version of Next.js.",
   "641": "Route %s used \\`unstable_rootParams()\\` in Pages Router. This API is only available within App Router.",
-  "642": "Route %s used \\`unstable_rootParams()\\` inside \\`\"use cache\"\\` or \\`unstable_cache\\`. Support for this API inside cache scopes is planned for a future version of Next.js."
+  "642": "Route %s used \\`unstable_rootParams()\\` inside \\`\"use cache\"\\` or \\`unstable_cache\\`. Support for this API inside cache scopes is planned for a future version of Next.js.",
+  "643": "matchOnRes() received an invalid request or response",
+  "644": "Invariant: App Route Route Modules cannot be used with the edge runtime",
+  "645": "\"next start\" does not work with \"output: bun\" configuration. Use \"bun .next/bun/server.js\" instead.",
+  "646": "Readable controller not initialized (writable.close() callback)",
+  "647": "matchOnReqRes() received an invalid request or response",
+  "648": "Invariant: unknown response type for RenderResult.toBodyInit(). This is a bug in Next.js",
+  "649": "matchOnReq() received an invalid request",
+  "650": "Readable controller not initialized (writable.write() callback)",
+  "651": "Missing required elements: %s%s",
+  "652": "Readable controller not initialized (transform.enqueue() callback)",
+  "653": "Readable controller not initialized (writable.abort() callback)",
+  "654": "onClose() is not implemented in BunNextResponse",
+  "655": "WebNextResponse may not be used inside renderToResponseWithComponents",
+  "656": "WebNextResponse may not be used with AppRoute. You might be misusing the Edge runtime"
 }
